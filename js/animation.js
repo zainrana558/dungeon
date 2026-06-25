@@ -1767,6 +1767,18 @@ const AnimationSystem = (() => {
     getSprite,
     getAnimFrame,
 
+    // Sprite keys for character rendering
+    SPRITES: {
+      knight: 'knight_idle',
+      knight_walk: 'knight_walk',
+      knight_attack: 'knight_attack',
+      assassin: 'assassin_idle',
+      mage: 'mage_idle',
+      necromancer: 'necromancer_idle',
+      paladin: 'paladin_idle',
+      warrior: 'warrior_idle',
+    },
+
     // Character rendering (existing signatures preserved)
     drawBlockCharacter,
     drawLeanCharacter,

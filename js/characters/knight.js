@@ -157,67 +157,19 @@ class Knight extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(x, y + this.height - 3, this.width, 4);
+  renderCharacter(ctx, x, y, alpha = 0) {
+    // Base sprite from animation system — uses pixel-art sprite grid
+    const spriteKey = this.state === 'walk' ? AN.SPRITES.knight_walk :
+                      this.state === 'attack' ? AN.SPRITES.knight_attack : AN.SPRITES.knight;
+    const frameIdx = this.state === 'walk'
+      ? AN.getAnimFrame(spriteKey, this.animFrame, 1)
+      : 0;
 
-    // Legs
-    const legSpread = this.state === 'walk' ? Math.sin(this.animFrame * 0.3) * 3 : 0;
-    ctx.fillStyle = '#4a4a5a';
-    ctx.fillRect(x + 4, y + this.height - 20, 8, 20 + legSpread * 0.5);
-    ctx.fillRect(x + this.width - 12, y + this.height - 20, 8, 20 - legSpread * 0.5);
+    AN.drawSprite(ctx, spriteKey, x, y, 1, frameIdx, !this.facingRight);
 
-    // Boots
-    ctx.fillStyle = '#3a3a3a';
-    ctx.fillRect(x + 3, y + this.height - 2, 10, 4);
-    ctx.fillRect(x + this.width - 13, y + this.height - 2, 10, 4);
-
-    // Body (storm-grey steel breastplate)
-    ctx.fillStyle = '#6a6a7a';
-    ctx.fillRect(x + 2, y + 10, this.width - 4, this.height - 32);
-    // Chest plate detail
-    ctx.fillStyle = '#7a7a8a';
-    ctx.fillRect(x + 4, y + 12, this.width - 8, 3);
-    ctx.fillRect(x + 8, y + 16, this.width - 16, 8);
-
-    // Crimson cloak
-    const cloakWave = this.state === 'walk' ? Math.sin(this.animFrame * 0.25) * 2 : 0;
-    ctx.fillStyle = '#8b2020';
-    ctx.fillRect(x + (this.facingRight ? this.width - 2 : -4 + cloakWave), y + 14, 6 + Math.abs(cloakWave), this.height - 30);
-
-    // Shoulders (pauldrons)
-    ctx.fillStyle = '#5a5a6a';
-    ctx.fillRect(x, y + 8, this.width, 8);
-    ctx.fillRect(x - 1, y + 7, 5, 10);
-    ctx.fillRect(x + this.width - 4, y + 7, 5, 10);
-
-    // Arms
-    ctx.fillStyle = '#6a6a7a';
-    ctx.fillRect(x + this.width - 10, y + 18, 10, 8);
-    // Gauntlet
-    ctx.fillStyle = '#8a8a8a';
-    ctx.fillRect(x + this.width - 10, y + 26, 10, 8);
-    // Gauntlet grip tighten (idle anim)
-    if (this.state === 'idle' && this.idleShiftTimer % 70 < 3) {
-      ctx.fillStyle = '#aaa';
-      ctx.fillRect(x + this.width - 10, y + 26, 10, 8);
-    }
-
-    // Head (great helm)
-    ctx.fillStyle = '#5a5a6a';
-    ctx.fillRect(x + this.width / 2 - 7, y - 4, 14, 16);
-    // Helm visor
-    ctx.fillStyle = '#3a3a3a';
-    ctx.fillRect(x + this.width / 2 - 4, y + 1, 8, 2);
-    // Golden eyes (never blink per design doc)
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(x + this.width / 2 - 2, y + 2, 2, 1);
-    ctx.fillRect(x + this.width / 2 + 1, y + 2, 2, 1);
-
-    // Shield (left side)
+    // Shield (left side) — rendered on top of sprite
     if (this.isBlocking || this.shieldUp) {
-      const shieldX = this.facingRight ? x - 8 : x + this.width;
+      const shieldX = this.facingRight ? x - 10 : x + this.width + 2;
       ctx.fillStyle = '#8a8a8a';
       ctx.fillRect(shieldX, y + 10, 10, 28);
       ctx.fillStyle = '#ffd700';
@@ -229,23 +181,13 @@ class Knight extends Character {
       }
     }
 
-    // Sword
-    const swordX = this.facingRight ? x + this.width : x - 16;
-    const swingOffset = this.state === 'attack' ? Math.sin(this.animFrame * 0.5) * 4 : 0;
-    ctx.fillStyle = '#c0c0c0';
-    ctx.fillRect(swordX + (this.facingRight ? 0 : -2), y + 16 + swingOffset, 14, 3);
-    // Sword handle
-    ctx.fillStyle = '#8B4513';
-    ctx.fillRect(swordX + (this.facingRight ? -3 : 12), y + 15 + swingOffset, 4, 5);
-    // Sword guard
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(swordX + (this.facingRight ? -2 : 10), y + 14 + swingOffset, 6, 2);
-
     // Breathing idle: chest plate expands 1px
     if (this.state === 'idle') {
-      ctx.fillStyle = '#7a7a8a';
-      const breath = this.breathPhase === 0 ? 0 : 1;
-      ctx.fillRect(x + 6, y + 14 - breath, this.width - 12, 6 + breath);
+      const breath = AN.breathingPhase(this.animFrame, 45);
+      if (breath) {
+        ctx.fillStyle = 'rgba(122, 122, 138, 0.3)';
+        ctx.fillRect(x + 6, y + 13, this.width - 12, 1);
+      }
     }
   }
 

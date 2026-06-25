@@ -10,12 +10,14 @@ const GAME = {
   width: 960,
   height: 540,
 
-  // Frame timing
+  // Frame timing — Fixed-timestep with interpolation
   FPS: 60,
-  FRAME_DURATION: 1000 / 60, // ~16.67ms
+  FIXED_DT: 1000 / 60, // ~16.67ms — physics always runs at this rate
   frameCount: 0,
   lastFrameTime: 0,
   deltaTime: 0,
+  accumulator: 0,
+  renderAlpha: 0, // 0-1 interpolation factor for rendering between physics steps
 
   // Game state
   state: 'MENU', // MENU | CHAR_SELECT | PLAYING | PAUSED | BONFIRE | VICTORY | DEFEAT | CONTINUE
@@ -76,24 +78,31 @@ const GAME = {
   loop(timestamp) {
     requestAnimationFrame(t => this.loop(t));
 
-    // Calculate delta, cap at 2x frame duration to prevent spiral of death
-    this.deltaTime = Math.min(timestamp - this.lastFrameTime, this.FRAME_DURATION * 2);
+    // Calculate delta, cap to prevent spiral of death (max 100ms = ~6 physics steps)
+    const frameTime = Math.min(timestamp - this.lastFrameTime, 100);
     this.lastFrameTime = timestamp;
+    this.deltaTime = frameTime;
 
-    // Only update on frame boundaries for consistent physics
-    if (this.deltaTime >= this.FRAME_DURATION - 2) {
+    // Fixed-timestep accumulator: physics always runs at exactly 60Hz
+    this.accumulator += frameTime;
+
+    while (this.accumulator >= this.FIXED_DT) {
       this.frameCount++;
 
       // Process hitstop first — freeze everything during impact
       if (this.hitstop.remaining > 0) {
         this.hitstop.remaining--;
-        this.render();
-        return;
+        this.accumulator -= this.FIXED_DT;
+        continue;
       }
 
       this.update();
-      this.render();
+      this.accumulator -= this.FIXED_DT;
     }
+
+    // Interpolation factor: how far between physics steps are we?
+    this.renderAlpha = this.accumulator / this.FIXED_DT;
+    this.render();
   },
 
   update() {
@@ -227,6 +236,11 @@ const GAME = {
       ctx.globalAlpha = 1;
     }
 
+    // Screen effects (CRT scanlines, vignette, chromatic aberration)
+    AN.applyScreenEffects(ctx, this.width, this.height,
+      this.player ? this.player.hp : 100,
+      this.player ? this.player.maxHP : 100);
+
     ctx.restore();
 
     // Debug overlay
@@ -236,28 +250,30 @@ const GAME = {
   },
 
   renderGameplay(ctx) {
+    const alpha = this.renderAlpha;
+
     // Render background / floor
     TowerSystem.renderFloor(ctx);
 
     // Render enemies
     for (const enemy of this.enemies) {
       if (!enemy.dead || !enemy.deathAnimComplete) {
-        enemy.render(ctx);
+        enemy.render(ctx, alpha);
       }
     }
 
     // Render boss
     if (this.boss && (!this.boss.dead || !this.boss.deathAnimComplete)) {
-      this.boss.render(ctx);
+      this.boss.render(ctx, alpha);
     }
 
     // Render player
     if (this.player) {
-      this.player.render(ctx);
+      this.player.render(ctx, alpha);
     }
 
     // Render projectiles
-    CombatSystem.render(ctx);
+    CombatSystem.render(ctx, alpha);
   },
 
   renderDebug(ctx) {

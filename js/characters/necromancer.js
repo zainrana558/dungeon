@@ -319,81 +319,19 @@ class Necromancer extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
-    // Ghostly wisps behind
-    const wispAlpha = 0.1 + Math.sin(this.swayPhase * 2) * 0.05;
+  renderCharacter(ctx, x, y, alpha = 0) {
+    // Green wisps behind (rendered BEFORE sprite)
+    const swayOffset = Math.sin(this.swayPhase * 2) * 5;
+    const wispAlpha = 0.08 + Math.sin(this.swayPhase * 2) * 0.04;
     ctx.fillStyle = `rgba(0, 255, 100, ${wispAlpha})`;
-    ctx.fillRect(x - 8, y + 10 + Math.sin(this.swayPhase) * 5, 4, 8);
+    ctx.fillRect(x - 8, y + 10 + swayOffset, 4, 8);
     ctx.fillRect(x + this.width + 4, y + 20 + Math.cos(this.swayPhase) * 5, 3, 6);
 
-    // Shadow (faint, like he's not fully here)
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(x + 2, y + this.height, this.width - 4, 2);
+    // Base sprite from animation system
+    const frameIdx = AN.getAnimFrame(AN.SPRITES.necromancer, this.animFrame, 1);
+    AN.drawSprite(ctx, AN.SPRITES.necromancer, x, y, 1, frameIdx, !this.facingRight);
 
-    // Legs (shambling - lift just enough to not trip)
-    const shambleOffset = this.state === 'walk' ? Math.sin(this.animFrame * 0.2) * 2 : 0;
-    const pauseFrame = this.state === 'walk' && this.animFrame % 4 === 0;
-    ctx.fillStyle = '#3a4a3a';
-    ctx.fillRect(x + 6, y + this.height - 18 + shambleOffset, 6, 18);
-    ctx.fillRect(x + this.width - 12, y + this.height - 18 - shambleOffset, 6, 18);
-
-    // Robe (tattered dark green)
-    ctx.fillStyle = '#1a2a1a';
-    ctx.fillRect(x + 2, y + 6, this.width - 4, this.height - 26);
-
-    // Tattered edges
-    ctx.fillStyle = '#0a1a0a';
-    ctx.fillRect(x + 2, y + this.height - 22, 4, 4);
-    ctx.fillRect(x + this.width / 2, y + this.height - 24, 4, 6);
-    ctx.fillRect(x + this.width - 6, y + this.height - 20, 4, 3);
-
-    // Skeletal body visible through robe
-    ctx.fillStyle = '#8a9a7a';
-    ctx.fillRect(x + this.width / 2 - 4, y + 8, 8, 14);
-
-    // Skull
-    ctx.fillStyle = '#8a9a7a';
-    ctx.fillRect(x + this.width / 2 - 5, y - 4, 10, 10);
-    // Hollow eyes (red pinpricks)
-    ctx.fillStyle = '#1a0000';
-    ctx.fillRect(x + this.width / 2 - 3, y - 1, 3, 3);
-    ctx.fillRect(x + this.width / 2 + 1, y - 1, 3, 3);
-    ctx.fillStyle = '#ff2200';
-    ctx.fillRect(x + this.width / 2 - 1, y + 1, 1, 1);
-    ctx.fillRect(x + this.width / 2 + 2, y + 1, 1, 1);
-
-    // Crown of jagged bone
-    ctx.fillStyle = '#d4c8a0';
-    ctx.fillRect(x + this.width / 2 - 6, y - 8, 3, 6);
-    ctx.fillRect(x + this.width / 2 - 2, y - 9, 3, 7);
-    ctx.fillRect(x + this.width / 2 + 2, y - 7, 3, 5);
-
-    // Crown adjustment animation
-    if (this.crownAdjustTimer > 180 && this.crownAdjustTimer < 185) {
-      ctx.fillStyle = '#e8d8b0';
-      ctx.fillRect(x + this.width / 2 - 1, y - 10, 4, 2);
-    }
-
-    // Bone staff (twisted femur)
-    ctx.fillStyle = '#c4b090';
-    const staffX = x + (this.facingRight ? -3 : this.width);
-    ctx.fillRect(staffX, y, 3, this.height - 4);
-
-    // Glowing green skull atop staff
-    const skullGlow = Math.sin(this.animFrame * 0.08) * 0.3 + 0.5;
-    ctx.fillStyle = `rgba(0, 255, 50, ${skullGlow})`;
-    ctx.fillRect(staffX - 3, y - 8, 9, 9);
-    ctx.fillStyle = '#00ff22';
-    ctx.fillRect(staffX, y - 5, 3, 3);
-
-    // Black miasma cough (periodic)
-    if (this.state === 'idle' && this.animFrame % 120 > 115) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      ctx.fillRect(x + this.width / 2 - 2, y + 6, 4, 3);
-      ctx.fillRect(x + this.width / 2 + 2, y + 8, 3, 2);
-    }
-
-    // Soul leech beam visual
+    // Soul leech beam visual (rendered on top)
     if (this.soulLeechActive) {
       const beamX = x + (this.facingRight ? this.width : -80);
       const beamY = y + this.height * 0.4;
@@ -402,14 +340,29 @@ class Necromancer extends Character {
       ctx.fillStyle = 'rgba(0, 255, 100, 0.3)';
       ctx.fillRect(beamX, beamY - 1, 80, 6);
     }
+
+    // Black miasma cough (periodic)
+    if (this.state === 'idle' && this.animFrame % 120 > 115) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(x + this.width / 2 - 2, y + 6, 4, 3);
+      ctx.fillRect(x + this.width / 2 + 2, y + 8, 3, 2);
+    }
+
+    // Glowing skull atop staff
+    const skullGlow = Math.sin(this.animFrame * 0.08) * 0.3 + 0.5;
+    const staffX = x + (this.facingRight ? -6 : this.width);
+    ctx.fillStyle = `rgba(0, 255, 50, ${skullGlow})`;
+    ctx.fillRect(staffX - 2, y - 8, 8, 8);
+    ctx.fillStyle = '#00ff22';
+    ctx.fillRect(staffX, y - 5, 3, 3);
   }
 
-  render(ctx) {
+  render(ctx, alpha = 0) {
     // Render skeletons
     for (const skel of this.skeletons) {
       skel.render(ctx);
     }
-    super.render(ctx);
+    super.render(ctx, alpha);
   }
 
   // Victory: kneels, pulls green soul from corpse, absorbs into staff

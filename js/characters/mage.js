@@ -253,65 +253,34 @@ class Mage extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
+  renderCharacter(ctx, x, y, alpha = 0) {
+    // Float 2px above ground with sine wave
     const floatY = y + Math.sin(this.animFrame * 0.08) * 2;
 
-    // Blue afterglow beneath
-    ctx.fillStyle = 'rgba(0, 100, 255, 0.1)';
-    ctx.fillRect(x - 4, floatY + this.height, this.width + 8, 3);
+    // Blue afterglow particles beneath (rendered BEFORE sprite)
+    const glowAlpha = 0.08 + Math.sin(this.animFrame * 0.05) * 0.04;
+    ctx.fillStyle = `rgba(0, 200, 255, ${glowAlpha})`;
+    ctx.fillRect(x - 6, floatY + this.height - 2, this.width + 12, 4);
+    ctx.fillStyle = `rgba(0, 100, 255, ${glowAlpha * 0.5})`;
+    ctx.fillRect(x - 8, floatY + this.height, this.width + 16, 3);
 
-    // Robe (indigo)
-    ctx.fillStyle = '#1a1040';
-    ctx.fillRect(x + 2, floatY + 6, this.width - 4, this.height - 8);
+    // Base sprite from animation system
+    const frameIdx = AN.getAnimFrame(AN.SPRITES.mage, this.animFrame, 1);
+    AN.drawSprite(ctx, AN.SPRITES.mage, x, floatY, 1, frameIdx, !this.facingRight);
 
-    // Gold constellation details (shift over time)
-    const constellationShift = Math.floor(this.animFrame / 60) % 3;
-    ctx.fillStyle = '#ffd700';
-    if (constellationShift === 0) {
-      ctx.fillRect(x + 6, floatY + 14, 3, 3);
-      ctx.fillRect(x + this.width - 10, floatY + 22, 2, 2);
-      ctx.fillRect(x + this.width / 2, floatY + 30, 2, 2);
-    } else if (constellationShift === 1) {
-      ctx.fillRect(x + 8, floatY + 18, 2, 2);
-      ctx.fillRect(x + this.width - 8, floatY + 16, 3, 3);
-      ctx.fillRect(x + 4, floatY + 28, 2, 2);
-    } else {
-      ctx.fillRect(x + 5, floatY + 20, 3, 3);
-      ctx.fillRect(x + this.width - 9, floatY + 14, 2, 2);
-      ctx.fillRect(x + 8, floatY + 32, 2, 2);
-    }
-
-    // Arms
-    ctx.fillStyle = '#2a2050';
-    ctx.fillRect(x + this.width - 8, floatY + 14, 8, 8);
-
-    // Head
-    ctx.fillStyle = '#f8f0ff'; // Pale ethereal skin
-    ctx.fillRect(x + this.width / 2 - 4, floatY - 4, 8, 10);
-
-    // Floating white hair
-    ctx.fillStyle = '#f0f0ff';
-    ctx.fillRect(x + this.width / 2 - 4, floatY - 8, 8, 5);
-    ctx.fillStyle = 'rgba(240, 240, 255, 0.5)';
-    ctx.fillRect(x + this.width / 2 - 2, floatY - 12, 4, 5);
-
-    // Blue sparkles floating up from hair
-    if (this.state === 'idle' && GAME.frameCount % 20 === 0) {
-      ParticleSystem.addSparks(x + this.width / 2 + (Math.random() - 0.5) * 4,
-                               floatY - 6, 1);
-    }
-
-    // Staff
-    const staffX = x + (this.facingRight ? -4 : this.width);
-    ctx.fillStyle = '#6a3a1a';
-    ctx.fillRect(staffX, floatY - 10, 3, this.height + 10);
-
-    // Crystal orb atop staff with pulsing heartbeat
+    // Staff orb pulse (rendered on top of sprite at staff position)
     const pulse = Math.sin(this.animFrame * 0.1) * 0.3 + 0.7;
+    const staffX = x + (this.facingRight ? -6 : this.width);
     ctx.fillStyle = `rgba(0, 255, 255, ${pulse})`;
     ctx.fillRect(staffX - 2, floatY - 16, 7, 7);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.fillRect(staffX, floatY - 14, 3, 3);
+
+    // Sparkle particles from hair
+    if (this.state === 'idle' && GAME.frameCount % 20 === 0) {
+      ParticleSystem.addSparks(x + this.width / 2 + (Math.random() - 0.5) * 4,
+                               floatY - 6, 1);
+    }
   }
 
   // Victory: twirls staff, floats upward and vanishes off screen

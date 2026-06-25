@@ -319,97 +319,27 @@ class Warrior extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
-    // Heavy shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(x - 2, y + this.height - 3, this.width + 4, 6);
-
-    // Legs (tree trunks)
-    ctx.fillStyle = '#6a4a3a';
-    ctx.fillRect(x + 8, y + this.height - 22, 10, 22);
-    ctx.fillRect(x + this.width - 18, y + this.height - 22, 10, 22);
-
-    // Boots (heavy)
-    ctx.fillStyle = '#3a2a1a';
-    ctx.fillRect(x + 7, y + this.height - 2, 12, 4);
-    ctx.fillRect(x + this.width - 19, y + this.height - 2, 12, 4);
-
-    // Body (bare chest, scar tissue)
-    ctx.fillStyle = '#c4956b';
-    ctx.fillRect(x + 6, y + 10, this.width - 12, this.height - 34);
-
-    // Ritual tattoos that glow orange when angry
-    if (this.tattooGlow > 0) {
-      ctx.fillStyle = `rgba(255, 100, 0, ${this.tattooGlow})`;
-    } else {
-      ctx.fillStyle = '#8a5030';
-    }
-    // Tattoo lines
-    ctx.fillRect(x + 10, y + 16, this.width - 20, 2);
-    ctx.fillRect(x + 10, y + 22, this.width - 20, 2);
-    ctx.fillRect(x + 14, y + 26, this.width - 28, 2);
-    // Angular symbol
-    ctx.fillRect(x + this.width / 2 - 3, y + 14, 6, 10);
-    ctx.fillRect(x + this.width / 2 - 1, y + 12, 2, 14);
-
-    // Scar tissue
-    ctx.fillStyle = '#b08060';
-    ctx.fillRect(x + 8, y + 20, 3, 8);
-    ctx.fillRect(x + this.width - 12, y + 15, 4, 12);
-
-    // Arms (massive)
-    ctx.fillStyle = '#c4956b';
-    ctx.fillRect(x + 2, y + 14, 8, 16);
-    ctx.fillRect(x + this.width - 10, y + 14, 8, 16);
-
-    // Fists gripping axes (always visible)
-    ctx.fillStyle = '#8a6a4a';
-    ctx.fillRect(x + 2, y + 28, 10, 8);
-    ctx.fillRect(x + this.width - 12, y + 28, 10, 8);
-
-    // Head
-    ctx.fillStyle = '#c4956b';
-    ctx.fillRect(x + this.width / 2 - 6, y - 4, 12, 12);
-
-    // Shaved head
-    ctx.fillStyle = '#a08060';
-    ctx.fillRect(x + this.width / 2 - 6, y - 6, 12, 4);
-
-    // Tangled beard
-    ctx.fillStyle = '#6a4a30';
-    const beardWave = Math.sin(this.animFrame * 0.15);
-    ctx.fillRect(x + this.width / 2 - 4, y + 6 + beardWave, 8, 6);
-
-    // Rage eyes
-    if (this.rageEyes) {
-      ctx.fillStyle = '#ff0000';
-      ctx.fillRect(x + this.width / 2 - 3, y, 3, 2);
-      ctx.fillRect(x + this.width / 2 + 1, y, 3, 2);
-    } else {
-      ctx.fillStyle = '#3a2010';
-      ctx.fillRect(x + this.width / 2 - 3, y, 3, 2);
-      ctx.fillRect(x + this.width / 2 + 1, y, 3, 2);
+  renderCharacter(ctx, x, y, alpha = 0) {
+    // Stomping walk — 1px screen shake on each step
+    if (this.grounded && Math.abs(this.currentSpeed) > 0.5 && GAME.frameCount % 15 === 0) {
+      GAME.triggerShake(1, 1);
     }
 
-    // Pixelated veins on forehead (when angry)
-    if (this.tattooGlow > 0.3 || this.rageEyes) {
-      ctx.fillStyle = `rgba(255, 0, 0, ${this.tattooGlow * 0.5})`;
-      ctx.fillRect(x + this.width / 2 - 4, y - 5, 2, 2);
-      ctx.fillRect(x + this.width / 2 + 2, y - 4, 2, 2);
+    // Lean forward at 30° angle during walk
+    const leanAngle = this.state === 'walk' ? Math.min(0.5, Math.abs(this.currentSpeed) / this.walkSpeed * 0.5) : 0;
+
+    ctx.save();
+    if (leanAngle > 0.01) {
+      ctx.translate(x + this.width / 2, y + this.height);
+      ctx.rotate(this.facingRight ? leanAngle : -leanAngle);
+      ctx.translate(-(x + this.width / 2), -(y + this.height));
     }
 
-    // Axes (both hands)
-    // Left axe
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(x + 2, y + 8, 3, 22);
-    ctx.fillStyle = '#a0a0a0';
-    ctx.fillRect(x - 4, y - 4, 12, 14);
+    // Base sprite from animation system
+    const frameIdx = AN.getAnimFrame(AN.SPRITES.warrior, this.animFrame, 1);
+    AN.drawSprite(ctx, AN.SPRITES.warrior, x, y, 1, frameIdx, !this.facingRight);
 
-    // Right axe
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(x + this.width - 5, y + 8, 3, 22);
-    ctx.fillStyle = '#a0a0a0';
-    ctx.fillRect(x + this.width - 8, y - 4, 12, 14);
+    ctx.restore();
 
     // Whirlwind visual
     if (this.whirlwindActive) {
@@ -420,41 +350,38 @@ class Warrior extends Character {
       ctx.fill();
     }
 
+    // Axe scraping sparks (idle habit)
+    if (this.state === 'idle' && GAME.frameCount % 120 < 3) {
+      ParticleSystem.addSparks(x + 2, y + this.height, 2);
+    }
+
+    // Vein pulsing on forehead (from animation system breathing phase)
+    if ((this.tattooGlow > 0.3 || this.rageEyes) && AN.breathingPhase(this.animFrame, 30)) {
+      ctx.fillStyle = `rgba(255, 0, 0, ${this.tattooGlow * 0.5 || 0.3})`;
+      ctx.fillRect(x + this.width / 2 - 4, y - 5, 2, 2);
+      ctx.fillRect(x + this.width / 2 + 2, y - 4, 2, 2);
+    }
+
     // Idle habits from design doc
     if (this.state === 'idle') {
       // Spit
       this.spitTimer++;
-      if (this.spitTimer > 200) {
-        this.spitTimer = 0;
-      }
+      if (this.spitTimer > 200) this.spitTimer = 0;
       if (this.spitTimer < 5) {
         ctx.fillStyle = '#aaa';
         ctx.fillRect(x + this.width / 2 + 4, y + 4, 2, 2);
       }
-
       // Neck crack
       this.neckCrackTimer++;
-      if (this.neckCrackTimer > 250) {
-        this.neckCrackTimer = 0;
-      }
-      if (this.neckCrackTimer < 3) {
-        // 3-pixel upward jerk
-        ctx.fillStyle = '#c4956b';
-        ctx.fillRect(x + this.width / 2 - 5, y - 7, 11, 12);
-      }
-
-      // Axe scrape on floor
-      if (GAME.frameCount % 120 < 3) {
-        ParticleSystem.addSparks(x + 2, y + this.height, 2);
-      }
+      if (this.neckCrackTimer > 250) this.neckCrackTimer = 0;
     }
 
     // Heavy breathing with pixelated veins
-    if (this.state === 'idle' || this.state === 'walk') {
+    if ((this.state === 'idle' || this.state === 'walk') && AN.breathingPhase(this.animFrame, 45)) {
       const breathIntensity = this.rageEyes ? 2 : 1;
-      if (this.breathPhase === 0) {
-        ctx.fillRect(x + this.width / 2 - 4, y + this.height - 34 + breathIntensity, this.width - 16, breathIntensity);
-      }
+      ctx.fillStyle = 'rgba(196, 149, 107, 0.3)';
+      ctx.fillRect(x + this.width / 2 - 4, y + this.height - 34 + breathIntensity,
+                    this.width - 16, breathIntensity);
     }
   }
 

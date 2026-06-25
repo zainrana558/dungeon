@@ -245,82 +245,42 @@ class Assassin extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
-    // Shadow (smaller, lighter)
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.fillRect(x + 2, y + this.height - 2, this.width - 4, 3);
+  renderCharacter(ctx, x, y, alpha = 0) {
+    // 2px oscillation bounce (4-frame cycle)
+    const bounceFrame = AN.getAnimFrame(AN.SPRITES.assassin, this.animFrame, 1);
+    const bounceY = y + (bounceFrame % 2 === 0 ? 0 : -2);
 
-    // Legs (athletic, coiled)
-    const bob = this.state === 'idle' ? Math.sin(this.animFrame * 0.2) * 2 : 0;
-    ctx.fillStyle = '#2a1a3a';
-    ctx.fillRect(x + 4, y + this.height - 18 + bob, 6, 18);
-    ctx.fillRect(x + this.width - 10, y + this.height - 18 - bob, 6, 18);
+    // Base sprite from animation system
+    AN.drawSprite(ctx, AN.SPRITES.assassin, x, bounceY, 1, bounceFrame, !this.facingRight);
 
-    // Boots
-    ctx.fillStyle = '#1a0a2a';
-    ctx.fillRect(x + 3, y + this.height - 2, 7, 4);
-    ctx.fillRect(x + this.width - 10, y + this.height - 2, 7, 4);
-
-    // Body (midnight purple leather)
-    ctx.fillStyle = '#2a1a4a';
-    ctx.fillRect(x + 3, y + 8, this.width - 6, this.height - 28);
-
-    // Leather armor detail
-    ctx.fillStyle = '#3a2a5a';
-    ctx.fillRect(x + 3, y + 12, this.width - 6, 2);
-
-    // Belt
-    ctx.fillStyle = '#1a0a2a';
-    ctx.fillRect(x + 3, y + this.height - 22, this.width - 6, 3);
-
-    // Arms
-    ctx.fillStyle = '#2a1a4a';
-    ctx.fillRect(x + this.width - 8, y + 14, 8, 8);
-
-    // Head
-    ctx.fillStyle = '#f0e6d3'; // Pale skin
-    ctx.fillRect(x + this.width / 2 - 4, y - 4, 8, 10);
-
-    // Shock-white hair
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x + this.width / 2 - 4, y - 7, 8, 4);
-
-    // Blood-orange scarf (always moving)
+    // Scarf trailing with delayed physics
     const scarfWave = Math.sin(this.animFrame * 0.3) * 2;
-    ctx.fillStyle = '#ff4400';
-    ctx.fillRect(x + (this.facingRight ? this.width - 1 : -5 + scarfWave),
-                 y + 12 + scarfWave * 0.5, 6 + Math.abs(scarfWave), 4);
-    // Scarf trail
-    ctx.fillStyle = 'rgba(255, 68, 0, 0.5)';
-    ctx.fillRect(x + (this.facingRight ? this.width + 1 : -10), y + 14, 8, 3);
+    const trailAlpha = 0.4 + Math.abs(Math.sin(this.animFrame * 0.15)) * 0.3;
+    ctx.fillStyle = `rgba(255, 68, 0, ${trailAlpha})`;
+    const trailX = x + (this.facingRight ? this.width + 1 : -10);
+    ctx.fillRect(trailX, bounceY + 14 + scarfWave * 0.5, 6 + Math.abs(scarfWave), 3);
 
-    // Daggers
-    const daggerX = this.facingRight ? x + this.width : x - 10;
-    ctx.fillStyle = '#e0e0e0';
-    ctx.fillRect(daggerX + (this.facingRight ? 0 : -2), y + 16, 10, 2);
-    // Dagger handle
-    ctx.fillStyle = '#4a2a2a';
-    ctx.fillRect(daggerX + (this.facingRight ? -2 : 8), y + 15, 3, 4);
-
-    // Dagger flip animation
-    if (Math.floor(this.daggerFlipTimer / 10) % 2 === 0) {
-      // Flipping
-      const flipAngle = Math.sin(this.daggerFlipTimer * 0.5) * 0.5;
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(daggerX + (this.facingRight ? 0 : -12),
-                   y + 15 + flipAngle * 4, 10, 2);
+    // Dagger flip animation every 300 frames
+    const flipState = Math.floor(this.daggerFlipTimer / 150) % 2;
+    if (flipState === 0) {
+      const daggerX = this.facingRight ? x + this.width : x - 12;
+      const flipAngle = Math.sin(this.daggerFlipTimer * 0.6) * 3;
+      ctx.fillStyle = '#e0e0e0';
+      ctx.fillRect(daggerX + (this.facingRight ? 0 : -2), bounceY + 15 + flipAngle, 10, 2);
+      ctx.fillStyle = '#4a2a2a';
+      ctx.fillRect(daggerX + (this.facingRight ? -2 : 8), bounceY + 14 + flipAngle, 3, 4);
     }
   }
 
-  render(ctx) {
+  render(ctx, alpha = 0) {
     // Render mirage clone first (behind main character)
     if (this.mirageClone) {
       const mc = this.mirageClone;
       ctx.globalAlpha = 0.4;
-      this.renderCharacter(ctx, mc.x, mc.y);
+      this.renderCharacter(ctx, mc.x, mc.y, alpha);
       ctx.globalAlpha = 1;
     }
-    super.render(ctx);
+    super.render(ctx, alpha);
   }
 
   // Victory: crouches over body, plucks soul pixel, crushes it

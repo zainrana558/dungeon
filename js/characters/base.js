@@ -1,6 +1,7 @@
 // ============================================================
 // PIXEL FURY: ETHEREAL SPIRE — Base Character Class
 // 3-phase attacks, movement physics, hurtboxes, animation states
+// Fixed-timestep interpolation + exponential smoothing movement
 // ============================================================
 
 class Character {
@@ -17,6 +18,10 @@ class Character {
     this.width = config.width || 32;
     this.height = config.height || 48;
     this.groundY = this.y;
+
+    // Interpolation: previous position for smooth rendering between physics ticks
+    this.prevX = this.x;
+    this.prevY = this.y;
 
     // Movement physics (design doc specifications)
     this.walkSpeed = config.walkSpeed || 3.5;        // px/frame
@@ -90,6 +95,10 @@ class Character {
   // ============================================================
 
   update() {
+    // Save previous position for interpolation BEFORE applying movement
+    this.prevX = this.x;
+    this.prevY = this.y;
+
     if (this.state === 'dead') {
       this.updateDeath();
       return;
@@ -186,7 +195,7 @@ class Character {
   }
 
   // ============================================================
-  // MOVEMENT
+  // MOVEMENT — Exponential Smoothing for Natural Ease-In/Ease-Out
   // ============================================================
 
   updateMovement() {
@@ -201,22 +210,29 @@ class Character {
     // Check block
     this.isBlocking = IN.isBlocking() && this.grounded && this.state !== 'attack';
 
-    // Horizontal movement with acceleration
+    // Horizontal movement with EXPONENTIAL SMOOTHING for natural feel
+    // accelFactor = 1 - exp(-1/accelFrames) — fast convergence, no overshoot
     const targetSpeed = dirX * this.walkSpeed;
-    const accel = this.grounded ? (this.walkSpeed / this.accelFrames) : (this.walkSpeed / this.accelFrames * this.airControl);
-    const decel = this.grounded ? (this.walkSpeed / this.decelFrames) : (this.walkSpeed / this.decelFrames * this.airControl * 0.7);
+    const isAccelerating = Math.abs(targetSpeed) > 0.01;
 
-    if (Math.abs(targetSpeed) > 0.01) {
-      // Accelerating toward target speed
-      this.currentSpeed += (targetSpeed > this.currentSpeed ? 1 : -1) * Math.min(accel, Math.abs(targetSpeed - this.currentSpeed));
-      this.state = this.state === 'idle' || this.state === 'walk' ? 'walk' : this.state;
+    if (isAccelerating) {
+      // Exponential smoothing toward target speed: natural ease-in
+      const accelFactor = 1 - Math.exp(-1 / this.accelFrames);
+      this.currentSpeed += (targetSpeed - this.currentSpeed) * accelFactor;
+
+      // Smooth idle→walk transition without visual snapping
+      if (this.state === 'idle') {
+        this.state = 'walk';
+      }
     } else {
-      // Decelerating to stop
-      if (Math.abs(this.currentSpeed) < decel) {
+      // Exponential deceleration to zero: natural ease-out
+      const decelFactor = 1 - Math.exp(-1 / this.decelFrames);
+      this.currentSpeed += (0 - this.currentSpeed) * decelFactor;
+
+      // Only switch to idle when nearly stopped (prevents state jitter)
+      if (Math.abs(this.currentSpeed) < 0.1 && this.state === 'walk') {
         this.currentSpeed = 0;
-        if (this.state === 'walk') this.state = 'idle';
-      } else {
-        this.currentSpeed -= Math.sign(this.currentSpeed) * decel;
+        this.state = 'idle';
       }
     }
 
@@ -247,13 +263,16 @@ class Character {
   }
 
   updateGrounded() {
-    if (this.y >= this.groundY) {
+    // Threshold-based ground detection — prevents floating-point jitter
+    if (this.y >= this.groundY - 0.5) {
       this.y = this.groundY;
       this.vy = 0;
       if (!this.grounded) {
         this.grounded = true;
         ParticleSystem.addDustPuff(this.x + this.width / 2, this.y + this.height);
       }
+    } else {
+      this.grounded = false;
     }
   }
 
@@ -415,16 +434,17 @@ class Character {
   hiddenAbilityDR = 1.0;
 
   // ============================================================
-  // RENDERING
+  // RENDERING — Interpolated Position for Smooth Motion
   // ============================================================
 
-  render(ctx) {
+  render(ctx, alpha = 0) {
     if (this.state === 'dead' && this.deathAnimComplete) return;
 
     ctx.save();
 
-    const fx = Math.round(this.x);
-    const fy = Math.round(this.y);
+    // Interpolated position between last physics tick and current
+    const fx = Math.round(this.prevX + (this.x - this.prevX) * alpha);
+    const fy = Math.round(this.prevY + (this.y - this.prevY) * alpha);
 
     // White flash on damage
     if (this.flashWhite > 0 && this.flashWhite % 2 === 0) {
@@ -436,12 +456,12 @@ class Character {
       ctx.globalAlpha = 0.3;
     }
 
-    this.renderCharacter(ctx, fx, fy);
+    this.renderCharacter(ctx, fx, fy, alpha);
     ctx.restore();
   }
 
-  // Override per character
-  renderCharacter(ctx, x, y) {
+  // Override per character — receives interpolated x, y plus renderAlpha
+  renderCharacter(ctx, x, y, alpha = 0) {
     AN.drawBlockCharacter(ctx, x, y, this.width, this.height, '#888888', '#666666', this.facingRight);
   }
 

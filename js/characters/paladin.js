@@ -316,54 +316,21 @@ class Paladin extends Character {
 
   // --- RENDERING ---
 
-  renderCharacter(ctx, x, y) {
+  renderCharacter(ctx, x, y, alpha = 0) {
     if (this.dismounted) {
       this.renderDismounted(ctx, x, y);
       return;
     }
 
-    // Shadow (large for mounted)
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x, y + this.height - 3, this.width, 5);
+    // Four-beat horse trot from animation system
+    const trotFrame = AN.getAnimFrame(AN.SPRITES.paladin, this.animFrame, 1);
 
-    // Horse legs (four-beat trot)
-    const legPhases = [
-      Math.sin(this.horseLegPhase),
-      Math.sin(this.horseLegPhase + Math.PI / 2),
-      Math.sin(this.horseLegPhase + Math.PI),
-      Math.sin(this.horseLegPhase + Math.PI * 1.5),
-    ];
-
-    // Rear legs
-    ctx.fillStyle = '#4a3520';
-    ctx.fillRect(x + 6, y + this.height - 12, 6, 10 + legPhases[0] * 3);
-    ctx.fillRect(x + 14, y + this.height - 12, 6, 10 + legPhases[1] * 3);
-
-    // Horse body
-    ctx.fillStyle = '#5a4530';
-    ctx.fillRect(x + 2, y + 10, this.width - 4, this.height - 24);
-
-    // Front legs
-    ctx.fillStyle = '#4a3520';
-    ctx.fillRect(x + this.width - 20, y + this.height - 12, 6, 10 + legPhases[2] * 3);
-    ctx.fillRect(x + this.width - 12, y + this.height - 12, 6, 10 + legPhases[3] * 3);
-
-    // Horse head
-    const headX = x + (this.facingRight ? this.width : -10);
-    ctx.fillStyle = '#5a4530';
-    ctx.fillRect(headX, y + 6, 12, 10);
-
-    // Horse mane
-    ctx.fillStyle = '#3a2510';
-    ctx.fillRect(headX + 2, y + 2, 4, 8);
-
-    // Horse tail
-    ctx.fillStyle = '#3a2510';
-    const tailWave = Math.sin(GAME.frameCount * 0.08) * 2;
-    ctx.fillRect(x + (this.facingRight ? -4 : this.width), y + 16 + tailWave, 4, 8);
+    // Base sprite from animation system
+    AN.drawSprite(ctx, AN.SPRITES.paladin, x, y, 1, trotFrame, !this.facingRight);
 
     // Steam from nostrils
     if (this.steamBurst > 0) {
+      const headX = x + (this.facingRight ? this.width : -10);
       ctx.fillStyle = `rgba(255, 255, 255, ${this.steamBurst / 10})`;
       ctx.fillRect(headX + (this.facingRight ? 10 : -4), y + 8, 4, 3);
     }
@@ -372,33 +339,6 @@ class Paladin extends Character {
     if (this.grounded && Math.abs(this.currentSpeed) > 0.3 && GAME.frameCount % 10 === 0) {
       ParticleSystem.addSparks(x + 8, y + this.height, 1);
     }
-
-    // Rider legs
-    ctx.fillStyle = '#8a8a9a';
-    ctx.fillRect(x + 6, y + 8, this.width - 12, 14);
-
-    // Rider body (silver armor)
-    ctx.fillStyle = '#c0c0d0';
-    ctx.fillRect(x + 8, y - 4, this.width - 16, 16);
-
-    // Blue-and-gold sun crest surcoat
-    ctx.fillStyle = '#2244aa';
-    ctx.fillRect(x + 12, y, this.width - 24, 8);
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(x + this.width / 2 - 3, y + 1, 6, 6);
-
-    // Rider head + helm with eagle wings
-    ctx.fillStyle = '#d4a574';
-    ctx.fillRect(x + this.width / 2 - 4, y - 10, 8, 8);
-
-    // Helm
-    ctx.fillStyle = '#c0c0d0';
-    ctx.fillRect(x + this.width / 2 - 5, y - 11, 10, 6);
-
-    // Eagle wing crest
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x + this.width / 2 - 8, y - 13, 4, 4);
-    ctx.fillRect(x + this.width / 2 + 4, y - 13, 4, 4);
 
     // Aegis bubble
     if (this.aegisActive) {
@@ -409,20 +349,11 @@ class Paladin extends Character {
       ctx.stroke();
     }
 
-    // Lance
-    const lanceX = x + (this.facingRight ? this.width : -24);
-    ctx.fillStyle = '#c0c0c0';
-    ctx.fillRect(lanceX, y + 2, 22, 3);
-    // Pennant
-    ctx.fillStyle = '#ff4444';
-    ctx.fillRect(lanceX + (this.facingRight ? 6 : 8), y - 4, 6, 8);
-
     // Cantabrian Circle turning (horse rears)
     if (this.cantabrianCircle > 0) {
       ctx.save();
       ctx.translate(x + this.width / 2, y + this.height / 2);
       ctx.rotate((this.cantabrianCircle / 6) * Math.PI);
-      // Redraw simplified horse
       ctx.fillStyle = '#5a4530';
       ctx.fillRect(-20, -15, 40, 25);
       ctx.restore();
