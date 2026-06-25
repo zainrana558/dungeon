@@ -1,6 +1,7 @@
 // ============================================================
 // PIXEL FURY: ETHEREAL SPIRE — Combat System
 // 3-phase attacks, hitstop, hitbox/hurtbox, counter-hit, KO detection
+// Screen effects, damage-scaled camera shake, canvas inversion
 // ============================================================
 
 const CombatSystem = {
@@ -10,9 +11,13 @@ const CombatSystem = {
   // Active hit effects to render
   hitEffects: [],
 
+  // Counter-hit inversion tracking
+  _invertFrames: 0,
+
   init() {
     this.projectiles = [];
     this.hitEffects = [];
+    this._invertFrames = 0;
   },
 
   // --- ATTACK STATE MACHINE ---
@@ -140,12 +145,15 @@ const CombatSystem = {
     let damage = attack.damage;
     let hitstopFrames = 8; // Standard hitstop
 
-    // Counter-hit: 1.5x damage, 14f hitstop
+    // Counter-hit: 1.5x damage, longer hitstop, flash effect
     if (isCounterHit) {
       damage = Math.floor(damage * 1.5);
       hitstopFrames = 14;
-      GAME.triggerFlash('rgba(255, 50, 50, 0.2)', 8);
+      GAME.triggerFlash('rgba(255, 50, 50, 0.25)', 10);
     }
+
+    // Determine knockback direction (for directional sparks)
+    const hitDir = attacker.x < target.x ? 1 : -1;
 
     // Check for KO
     const willKill = target.hp - damage <= 0;
@@ -158,29 +166,100 @@ const CombatSystem = {
       SFX.playImpact('light');
       target.blockStun = 10;
       target.onBlocked(attacker, attack);
-      GAME.triggerShake(1, 3);
+
+      // Block shake (subtle)
+      GAME.triggerShake(1, 2);
+
+      // Block sparks (fly outward from block point)
+      ParticleSystem.addSparks(
+        target.x + target.width / 2,
+        target.y + target.height / 2,
+        6,
+        hitDir > 0 ? 0 : Math.PI,
+        0.6
+      );
+
+      // Screen flash for block hitstop
+      GAME.triggerFlash('rgba(255, 255, 255, 0.06)', 4);
     } else {
       // Apply damage
       target.takeDamage(damage, attacker, attack);
 
-      // Hitstop
+      // ═══ HITSTOP ═══
       GAME.triggerHitstop(hitstopFrames);
 
-      // Screen shake
-      const shakeIntensity = willKill ? 4 : (damage > 15 ? 3 : 2);
-      GAME.triggerShake(shakeIntensity, hitstopFrames);
+      // ═══ SCREEN FLASH ON HITSTOP ═══
+      // Flash intensity scales with damage
+      const flashIntensity = willKill ? 0.3 : (isCounterHit ? 0.2 : 0.08);
+      const flashColor = isCounterHit
+        ? 'rgba(255, 80, 40, ' + flashIntensity + ')'
+        : willKill
+          ? 'rgba(255, 255, 255, ' + flashIntensity + ')'
+          : 'rgba(255, 255, 200, ' + flashIntensity + ')';
+      GAME.triggerFlash(flashColor, Math.floor(hitstopFrames * 0.7));
 
-      // Hit effect
+      // Also trigger particle screen flash for dramatic hits
+      if (willKill || isCounterHit) {
+        const pFlashColor = isCounterHit ? 'rgba(255, 60, 20, 0.25)' : 'rgba(255, 255, 255, 0.3)';
+        ParticleSystem.addScreenFlash(pFlashColor, hitstopFrames);
+      }
+
+      // ═══ CAMERA SHAKE (scales with damage) ═══
+      // More granular shake: base 1 + damage-based scaling
+      const shakeIntensity = Math.min(6, 1 + Math.floor(damage / 8));
+      const shakeDuration = hitstopFrames + Math.floor(damage / 5);
+      GAME.triggerShake(shakeIntensity, willKill ? shakeDuration + 6 : shakeDuration);
+
+      // ═══ COUNTER-HIT: CANVAS COLOR INVERSION ═══
+      if (isCounterHit) {
+        this._invertFrames = 4;
+        const canvas = document.getElementById('game-canvas');
+        if (canvas) {
+          canvas.style.filter = 'invert(1)';
+        }
+      }
+
+      // ═══ DIRECTIONAL HIT SPARKS ═══
+      const sparkAngle = hitDir > 0 ? Math.PI : 0; // sparks fly opposite to knockback
+      const sparkCount = willKill ? 16 : (isCounterHit ? 12 : 8);
+      ParticleSystem.addSparks(
+        target.x + target.width / 2,
+        target.y + target.height * 0.35,
+        sparkCount,
+        sparkAngle,
+        willKill ? 1.2 : 0.9
+      );
+
+      // ═══ IMPACT RING ON HEAVY HITS ═══
+      if (damage >= 12 || willKill) {
+        const irColor = isCounterHit ? '#ff4444' : '#ffffff';
+        const irRadius = willKill ? 70 : 40 + damage;
+        ParticleSystem.addImpactRing(
+          target.x + target.width / 2,
+          target.y + target.height * 0.4,
+          irRadius,
+          irColor
+        );
+      }
+
+      // ═══ GROUND CRACK ON KNOCKDOWN/KO ═══
+      if (willKill || damage >= 20) {
+        ParticleSystem.addGroundCrack(
+          target.x + target.width / 2,
+          GAME.height - 65
+        );
+      }
+
+      // ═══ HIT EFFECT ═══
       const effectType = isCounterHit ? 'counter' : (willKill ? 'ko' : 'normal');
       const hitX = target.x + target.width / 2;
       const hitY = target.y + target.height * 0.3;
       this.addHitEffect(hitX, hitY, effectType);
 
-      // Sound
+      // ═══ SOUND ═══
       if (willKill) {
         SFX.playImpact('ko');
-        // Screen shatter for KO
-        GAME.triggerFlash('rgba(255, 255, 255, 0.4)', 20);
+        GAME.triggerFlash('rgba(255, 255, 255, 0.4)', 24);
       } else if (isCounterHit) {
         SFX.playImpact('counter');
         SFX.playGrunt(target.characterType || 'default', damage);
@@ -249,7 +328,7 @@ const CombatSystem = {
       explodeOnDeath: config.explodeOnDeath || false,
       explodeRadius: config.explodeRadius || 60,
       explodeDamage: config.explodeDamage || 15,
-      phaseThrough: config.phaseThrough || false, // Phase through first N frames
+      phaseThrough: config.phaseThrough || false,
       phaseFrames: config.phaseFrames || 0,
       phaseCount: 0,
       onExpire: config.onExpire || null,
@@ -308,8 +387,14 @@ const CombatSystem = {
 
           // Hit effects
           GAME.triggerHitstop(6);
-          GAME.triggerShake(1, 4);
+          GAME.triggerShake(1 + Math.floor(p.damage / 10), 4);
+          GAME.triggerFlash('rgba(255, 255, 200, 0.08)', 4);
           this.addHitEffect(p.x + p.w / 2, p.y + p.h / 2, 'normal');
+
+          // Projectile sparks
+          const sparkDir = p.vx > 0 ? Math.PI : 0;
+          ParticleSystem.addSparks(p.x + p.w / 2, p.y + p.h / 2, 5, sparkDir, 0.7);
+
           SFX.playImpact('light');
 
           if (p.explodeOnDeath) {
@@ -340,6 +425,9 @@ const CombatSystem = {
     // Add explosion particle effect
     ParticleSystem.addExplosion(x, y, radius);
 
+    // Add impact ring
+    ParticleSystem.addImpactRing(x, y, radius, '#ff6600');
+
     // Damage all targets in radius
     const targets = isPlayer ? [...GAME.enemies] : [GAME.player];
     if (GAME.boss && !GAME.boss.dead) {
@@ -356,17 +444,18 @@ const CombatSystem = {
       }
     }
 
-    GAME.triggerShake(3, 8);
+    GAME.triggerShake(3 + Math.floor(radius / 20), 8);
+    GAME.triggerFlash('rgba(255, 150, 30, 0.15)', 6);
     SFX.playImpact('heavy');
   },
 
-  // --- HIT EFFECTS ---
+  // --- HIT EFFECTS (rendered text/symbols on hit) ---
 
   addHitEffect(x, y, type) {
     this.hitEffects.push({
       x, y, type,
-      life: type === 'ko' ? 20 : 8,
-      maxLife: type === 'ko' ? 20 : 8,
+      life: type === 'ko' ? 20 : 10,
+      maxLife: type === 'ko' ? 20 : 10,
     });
   },
 
@@ -402,6 +491,17 @@ const CombatSystem = {
   },
 
   update() {
+    // ═══ COUNTER-HIT CANVAS INVERSION DECAY ═══
+    if (this._invertFrames > 0) {
+      this._invertFrames--;
+      if (this._invertFrames <= 0) {
+        const canvas = document.getElementById('game-canvas');
+        if (canvas) {
+          canvas.style.filter = '';
+        }
+      }
+    }
+
     this.updateProjectiles();
     this.updateHitEffects();
   },
