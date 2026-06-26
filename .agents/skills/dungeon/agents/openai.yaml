@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dungeon"
+  short_description: "Repo-specific patterns and workflows for dungeon"
+  default_prompt: "Use the dungeon repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
