@@ -495,3 +495,93 @@ body.no-effects #game-container {
 body.no-effects #game-canvas {
   filter: none !important;
 }
+
+/* --- Sprite Atlas Reference Page ------------------------- */
+.sprite-page-body {
+  cursor: default;
+  overflow: auto;
+  align-items: flex-start;
+  padding: 32px 18px;
+}
+
+.sprite-atlas-shell {
+  position: relative;
+  z-index: 2;
+  width: min(1180px, 100%);
+  color: #f4f0ff;
+}
+
+.sprite-atlas-header {
+  border: 3px solid rgba(135, 96, 255, 0.55);
+  background: linear-gradient(135deg, rgba(13, 12, 24, 0.96), rgba(34, 20, 58, 0.94));
+  box-shadow: 0 0 40px rgba(100, 60, 220, 0.24), inset 0 0 24px rgba(0, 0, 0, 0.45);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.sprite-atlas-header .eyebrow {
+  color: #8eeaff;
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  margin-bottom: 8px;
+}
+
+.sprite-atlas-header h1 {
+  color: #ffd66d;
+  font-size: clamp(28px, 4vw, 48px);
+  text-shadow: 3px 3px 0 #26143d;
+  margin-bottom: 10px;
+}
+
+.sprite-atlas-header p {
+  max-width: 760px;
+  line-height: 1.55;
+  color: #d8d1ff;
+}
+
+.sprite-home-link {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border: 2px solid #8eeaff;
+  color: #05050a;
+  background: #8eeaff;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 4px 4px 0 #26143d;
+}
+
+.sprite-atlas-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.sprite-card {
+  border: 2px solid rgba(255, 214, 109, 0.38);
+  background: rgba(8, 8, 16, 0.92);
+  padding: 16px;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+}
+
+.sprite-card h2 {
+  color: #ffd66d;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.sprite-card p {
+  color: #aaa2d8;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.sprite-sheet-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 2px solid #2b2940;
+  background: #11111b;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
