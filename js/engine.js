@@ -20,7 +20,7 @@ const GAME = {
   renderAlpha: 0, // 0-1 interpolation factor for rendering between physics steps
 
   // Game state
-  state: 'MENU', // MENU | CHAR_SELECT | PLAYING | PAUSED | BONFIRE | VICTORY | DEFEAT | CONTINUE
+  state: 'MENU', // MENU | CHAR_SELECT | MENU_CONTROLS | MENU_CREDITS | PLAYING | PAUSED | BONFIRE | VICTORY | DEFEAT | CONTINUE
   floor: 1,
   score: 0,
   soulShards: 0,
@@ -109,12 +109,27 @@ const GAME = {
     // Update input buffer (always runs, even during pauses, for menu navigation)
     InputSystem.update();
 
+    // Update audio (volume smoothing, continuous sound sync)
+    AudioSystem.update();
+
+    // Screen flash decay
+    if (this.screenFlash.duration > 0) {
+      this.screenFlash.duration--;
+      this.screenFlash.alpha *= 0.85;
+    }
+
     switch (this.state) {
       case 'MENU':
         MenuSystem.update();
         break;
       case 'CHAR_SELECT':
         MenuSystem.updateCharSelect();
+        break;
+      case 'MENU_CONTROLS':
+        MenuSystem.updateControls();
+        break;
+      case 'MENU_CREDITS':
+        MenuSystem.updateCredits();
         break;
       case 'PLAYING':
         this.updateGameplay();
@@ -133,8 +148,15 @@ const GAME = {
         break;
     }
 
+    // Update combat (projectiles, hit effects)
+    CombatSystem.update();
+
     // Update particles always
     ParticleSystem.update();
+    DamageNumbers.update();
+
+    // Update floor renderer (torch flicker, ambient particles)
+    FloorRenderer.update();
 
     // Update camera
     CameraSystem.update();
@@ -205,6 +227,12 @@ const GAME = {
       case 'CHAR_SELECT':
         MenuSystem.renderCharSelect(ctx);
         break;
+      case 'MENU_CONTROLS':
+        MenuSystem.renderControls(ctx);
+        break;
+      case 'MENU_CREDITS':
+        MenuSystem.renderCredits(ctx);
+        break;
       case 'PLAYING':
       case 'PAUSED':
         this.renderGameplay(ctx);
@@ -252,6 +280,9 @@ const GAME = {
   renderGameplay(ctx) {
     const alpha = this.renderAlpha;
 
+    // Apply camera translation for world-space rendering
+    ctx.save();
+
     // Render background / floor
     TowerSystem.renderFloor(ctx);
 
@@ -273,7 +304,10 @@ const GAME = {
     }
 
     // Render projectiles
+    DamageNumbers.render(ctx);
     CombatSystem.render(ctx, alpha);
+
+    ctx.restore();
   },
 
   renderDebug(ctx) {

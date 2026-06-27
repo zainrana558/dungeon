@@ -1,6 +1,9 @@
 // ============================================================
 // FINAL BOSS: THE ARCHDEMON (Azazoth the Glitch) — Floor 25
 // Adaptive AI, Regret System, Tilt State, Hidden Defeat Condition
+// Phase 1: Ground melee + fire projectiles
+// Phase 2 (<50% HP): Teleport + area denial (fire patches)
+// Phase 3 (<25% HP): Enrage — faster, more damage, screen darkens
 // ============================================================
 
 class Archdemon extends Enemy {
@@ -58,11 +61,36 @@ class Archdemon extends Enemy {
     this.glitchTimer = 0;
     this.glitchOffset = { x: 0, y: 0 };
     this.formShift = 0;
+
+    // === PHASE SYSTEM ===
+    this.bossPhase = 1;           // 1, 2, 3
+    this.phaseTransitioning = false;
+
+    // Phase 1: Fire projectile timer
+    this.fireProjectileTimer = 90 + Math.floor(Math.random() * 30);
+
+    // Phase 2: Teleport timer + fire patches
+    this.phase2TeleportTimer = 180 + Math.floor(Math.random() * 60);
+    this.firePatches = [];        // { x, y, w, life, damage }
+
+    // Phase 3: Enrage flags
+    this.enraged = false;
+    this._baseWalkSpeed = this.walkSpeed;
+    this._baseDamage = this.damage;
   }
 
   updateAI() {
     const player = GAME.player;
     if (!player || player.dead) return;
+
+    // === PHASE TRANSITIONS ===
+    const hpPercent = this.hp / this.maxHP;
+
+    if (hpPercent <= 0.25 && this.bossPhase !== 3) {
+      this.transitionToPhase(3);
+    } else if (hpPercent <= 0.5 && this.bossPhase === 1) {
+      this.transitionToPhase(2);
+    }
 
     // Track player tendencies
     this.trackPlayerTendencies();
@@ -72,6 +100,9 @@ class Archdemon extends Enemy {
 
     // Glitch visual
     this.glitchTimer++;
+
+    // Update fire patches (Phase 2+)
+    this.updateFirePatches();
 
     // Search state (hidden defeat condition)
     if (this.searchState) {
@@ -83,8 +114,6 @@ class Archdemon extends Enemy {
       }
       return;
     }
-
-    // Normal AI
 
     // Frustration check
     this.frustrationMeter = Math.max(0, this.frustrationMeter - 0.02);
@@ -102,23 +131,58 @@ class Archdemon extends Enemy {
     const dist = Math.abs(dx);
     this.facingRight = dx > 0;
 
-    // Position at medium range
-    if (dist > 100) {
+    // Position at medium range (wider in Phase 3)
+    const preferredMin = this.bossPhase === 3 ? 60 : 40;
+    const preferredMax = this.bossPhase === 3 ? 140 : 100;
+
+    if (dist > preferredMax) {
       this.x += this.facingRight ? this.walkSpeed : -this.walkSpeed;
-    } else if (dist < 40) {
+    } else if (dist < preferredMin) {
       this.x -= this.facingRight ? this.walkSpeed : -this.walkSpeed;
+    }
+
+    // === PHASE 1: Fire projectiles ===
+    if (this.bossPhase >= 1) {
+      this.fireProjectileTimer--;
+      if (this.fireProjectileTimer <= 0) {
+        this.fireProjectileTimer = this.bossPhase === 3
+          ? 40 + Math.floor(Math.random() * 20)
+          : 80 + Math.floor(Math.random() * 40);
+        this.fireProjectileAtPlayer();
+      }
+    }
+
+    // === PHASE 2: Teleport + area denial ===
+    if (this.bossPhase >= 2) {
+      this.phase2TeleportTimer--;
+      if (this.phase2TeleportTimer <= 0) {
+        this.phase2TeleportTimer = this.bossPhase === 3
+          ? 100 + Math.floor(Math.random() * 40)
+          : 180 + Math.floor(Math.random() * 60);
+        this.demonTeleport();
+        // Place fire patch at old location
+        this.placeFirePatch(this.x, this.groundY - 10);
+      }
+    }
+
+    // === PHASE 3: Screen darkens, continuous pressure ===
+    if (this.bossPhase === 3) {
+      // Darken screen (handled in render)
+      // Extra aggression: attack more frequently
     }
 
     // Attack rotation
     this.attackTimer++;
-    if (this.attackTimer >= 60 && this.attackCooldown <= 0) {
+    const attackInterval = this.bossPhase === 3 ? 35 : 60;
+    if (this.attackTimer >= attackInterval && this.attackCooldown <= 0) {
       this.attackTimer = 0;
       this.chooseAttack();
     }
 
     // Special move timer
     this.specialMoveTimer++;
-    if (this.specialMoveTimer >= 200) {
+    const specialInterval = this.bossPhase === 3 ? 120 : 200;
+    if (this.specialMoveTimer >= specialInterval) {
       this.specialMoveTimer = 0;
       this.useUnlockedMove();
     }
@@ -130,6 +194,124 @@ class Archdemon extends Enemy {
     } else {
       this.glitchOffset.x *= 0.8;
       this.glitchOffset.y *= 0.8;
+    }
+  }
+
+  // === PHASE TRANSITIONS ===
+  transitionToPhase(newPhase) {
+    if (this.phaseTransitioning) return;
+    this.phaseTransitioning = true;
+    this.bossPhase = newPhase;
+
+    if (newPhase === 2) {
+      GAME.triggerShake(3, 15);
+      GAME.triggerFlash('rgba(150, 0, 0, 0.2)', 15);
+      SFX.playSpecial('dragon');
+      ParticleSystem.addExplosion(this.x + this.width / 2, this.y + this.height / 2, 40, '#ff4400');
+    } else if (newPhase === 3) {
+      // Enrage!
+      this.enraged = true;
+      this.walkSpeed = this._baseWalkSpeed * 1.4;
+      this.damage = this._baseDamage * 1.3;
+      GAME.triggerShake(6, 25);
+      GAME.triggerFlash('rgba(255, 0, 0, 0.3)', 20);
+      SFX.playSpecial('dragon');
+      ParticleSystem.addExplosion(this.x + this.width / 2, this.y + this.height / 2, 60, '#ff0000');
+      SFX.playImpact('ko');
+    }
+
+    setTimeout(() => { this.phaseTransitioning = false; }, 1000);
+  }
+
+  // === PHASE 1: FIRE PROJECTILE ===
+  fireProjectileAtPlayer() {
+    const player = GAME.player;
+    if (!player) return;
+
+    const cx = this.x + this.width / 2;
+    const cy = this.y + 15;
+    const angle = Math.atan2(
+      (player.y + player.height / 2) - cy,
+      (player.x + player.width / 2) - cx
+    );
+
+    // Phase 3 fires 3 projectiles in a spread
+    const count = this.bossPhase === 3 ? 3 : 1;
+    const spread = 0.2;
+
+    for (let i = 0; i < count; i++) {
+      const a = angle + (i - Math.floor(count / 2)) * spread;
+      CMB.spawnProjectile({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * 4,
+        vy: Math.sin(a) * 4,
+        w: 8, h: 8,
+        damage: Math.floor(this.damage * 0.6),
+        owner: this,
+        ownerIsPlayer: false,
+        life: 120,
+        color: '#ff4400',
+        glow: 'rgba(255, 100, 0, 0.5)',
+      });
+    }
+    SFX.playSpecial('lich');
+  }
+
+  // === PHASE 2: DEMON TELEPORT ===
+  demonTeleport() {
+    const player = GAME.player;
+    if (!player) return;
+
+    ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#ff0066');
+
+    // Teleport to a random position away from player
+    const side = Math.random() > 0.5 ? 1 : -1;
+    let newX = player.x + side * (120 + Math.random() * 80);
+    newX = Math.max(20, Math.min(GAME.width - this.width - 20, newX));
+    this.x = newX;
+    this.y = this.groundY - this.height;
+
+    ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#ff4400');
+    SFX.playImpact('heavy');
+  }
+
+  // === PHASE 2: FIRE PATCH (area denial) ===
+  placeFirePatch(x, y) {
+    const patch = {
+      x: x - 25,
+      y: y - 5,
+      w: 50,
+      h: 10,
+      life: 180, // 3 seconds
+      damage: 4,
+      tickTimer: 0,
+    };
+    this.firePatches.push(patch);
+  }
+
+  updateFirePatches() {
+    const player = GAME.player;
+    for (let i = this.firePatches.length - 1; i >= 0; i--) {
+      const patch = this.firePatches[i];
+      patch.life--;
+      if (patch.life <= 0) {
+        this.firePatches.splice(i, 1);
+        continue;
+      }
+
+      // Damage player if standing on patch
+      if (player && !player.dead) {
+        const playerBox = { x: player.x, y: player.y + player.height - 10, w: player.width, h: 15 };
+        const patchBox = { x: patch.x, y: patch.y, w: patch.w, h: patch.h };
+        if (CMB.rectsOverlap(playerBox, patchBox)) {
+          patch.tickTimer++;
+          if (patch.tickTimer >= 15) { // Damage every 15 frames
+            patch.tickTimer = 0;
+            player.takeDamage(patch.damage, this, null);
+          }
+        }
+      }
     }
   }
 
@@ -210,7 +392,7 @@ class Archdemon extends Enemy {
     // Wild heavy attacks with huge whiff windows
     this.attackCooldown--;
     if (this.attackCooldown <= 0) {
-      this.attackCooldown = 30;
+      this.attackCooldown = this.bossPhase === 3 ? 20 : 30;
 
       // Randomly whiff (50% less accurate)
       if (Math.random() < this.attackAccuracy) {
@@ -219,7 +401,7 @@ class Archdemon extends Enemy {
         // Whiff — just swing wildly, massive recovery
         this.currentAttacks.push(CMB.createAttack(this, {
           startup: 15, active: 8, recovery: 30,
-          damage: 25,
+          damage: 25 * (this.bossPhase === 3 ? 1.3 : 1),
           hitbox: { x: -10, y: -5, w: 70, h: 50 },
           knockback: 12, hitstun: 24,
           whooshFrame: 12,
@@ -281,10 +463,11 @@ class Archdemon extends Enemy {
   }
 
   lightAttack() {
+    const dmgMult = this.bossPhase === 3 ? 1.3 : 1;
     this.state = 'attack';
     this.currentAttacks.push(CMB.createAttack(this, {
       startup: 6, active: 3, recovery: 10,
-      damage: 12,
+      damage: 12 * dmgMult,
       hitbox: { x: 30, y: 10, w: 30, h: 20 },
       knockback: 4, hitstun: 14,
       whooshFrame: 4,
@@ -292,10 +475,11 @@ class Archdemon extends Enemy {
   }
 
   heavyAttack() {
+    const dmgMult = this.bossPhase === 3 ? 1.3 : 1;
     this.state = 'attack';
     this.currentAttacks.push(CMB.createAttack(this, {
       startup: 14, active: 6, recovery: 25,
-      damage: 24,
+      damage: 24 * dmgMult,
       hitbox: { x: 35, y: 5, w: 40, h: 30 },
       knockback: 10, hitstun: 24,
       whooshFrame: 10,
@@ -303,10 +487,11 @@ class Archdemon extends Enemy {
   }
 
   specialAttack() {
+    const dmgMult = this.bossPhase === 3 ? 1.3 : 1;
     this.state = 'attack';
     this.currentAttacks.push(CMB.createAttack(this, {
       startup: 10, active: 5, recovery: 20,
-      damage: 18,
+      damage: 18 * dmgMult,
       hitbox: { x: 20, y: -5, w: 50, h: 40 },
       knockback: 8, hitstun: 20,
       whooshFrame: 8,
@@ -400,7 +585,7 @@ class Archdemon extends Enemy {
   }
 
   onBlocked(attacker, attack) {
-    super.onBlocked(attacker, attack);
+    super.onBlocked && super.onBlocked(attacker, attack);
     this.frustrationMeter += 5; // Blocking his attacks makes him angry
   }
 
@@ -414,6 +599,13 @@ class Archdemon extends Enemy {
 
     const x = Math.round(this.x + this.glitchOffset.x);
     const y = Math.round(this.y + this.glitchOffset.y);
+
+    // === PHASE 3: Screen darkens ===
+    if (this.bossPhase === 3) {
+      const darkAlpha = 0.15 + Math.sin(GAME.frameCount * 0.05) * 0.05;
+      ctx.fillStyle = `rgba(20, 0, 0, ${darkAlpha})`;
+      ctx.fillRect(0, 0, GAME.width, GAME.height);
+    }
 
     // Search state — completely still
     if (this.searchState) {
@@ -468,6 +660,20 @@ class Archdemon extends Enemy {
       ctx.restore();
     }
 
+    // === FIRE PATCHES (Phase 2+) ===
+    for (const patch of this.firePatches) {
+      const patchAlpha = Math.min(1, patch.life / 30);
+      ctx.fillStyle = `rgba(255, 80, 0, ${patchAlpha * 0.6})`;
+      ctx.fillRect(patch.x, patch.y, patch.w, patch.h);
+      // Flickering flames on top
+      const flameCount = Math.floor(patch.w / 8);
+      for (let f = 0; f < flameCount; f++) {
+        const fh = 3 + Math.sin(GAME.frameCount * 0.2 + f * 2) * 2;
+        ctx.fillStyle = `rgba(255, 200, 50, ${patchAlpha * 0.7})`;
+        ctx.fillRect(patch.x + f * 8, patch.y - fh, 6, fh);
+      }
+    }
+
     // Mines
     for (const mine of this.minesPlaced) {
       const pulse = Math.sin(GAME.frameCount * 0.2) * 0.3 + 0.7;
@@ -492,6 +698,13 @@ class Archdemon extends Enemy {
       ctx.fillRect(x - 6, y - 6, this.width + 12, this.height + 12);
     }
 
+    // Enrage visual (Phase 3)
+    if (this.enraged) {
+      const enragePulse = Math.sin(GAME.frameCount * 0.12) * 0.1 + 0.15;
+      ctx.fillStyle = `rgba(255, 0, 0, ${enragePulse})`;
+      ctx.fillRect(x - 8, y - 8, this.width + 16, this.height + 16);
+    }
+
     // Frustration meter (subtle)
     const frustBarW = this.width;
     ctx.fillStyle = `rgba(255, ${255 - this.frustrationMeter * 2}, 0, 0.3)`;
@@ -501,6 +714,14 @@ class Archdemon extends Enemy {
   die() {
     this.dead = true;
     this.deathTimer = 0;
+
+    // Reset special states
+    this.enraged = false;
+    this.reflecting = false;
+    this.searchState = false;
+    this.invincible = false;
+    this.firePatches = [];
+    this.minesPlaced = [];
 
     // Glitches wildly, shatters into colored fragments
     GAME.triggerFlash('rgba(255, 255, 255, 0.5)', 30);

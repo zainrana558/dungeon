@@ -1,6 +1,6 @@
 // ============================================================
 // PIXEL FURY: ETHEREAL SPIRE — Menu System
-// Main menu, character select, bonfire upgrades
+// Main menu, character select, bonfire upgrades, controls, credits
 // ============================================================
 
 const MenuSystem = {
@@ -17,12 +17,12 @@ const MenuSystem = {
   // Character select state
   charSelectIndex: 0,
   characters: [
-    { type: 'knight', name: 'KNIGHT', desc: 'The Weight of Oaths' },
-    { type: 'assassin', name: 'ASSASSIN', desc: 'A Blade in the Dark' },
-    { type: 'mage', name: 'MAGE', desc: 'The Weaver of Reality' },
-    { type: 'necromancer', name: 'NECROMANCER', desc: 'The Lord of Rot' },
-    { type: 'paladin', name: 'PALADIN', desc: 'The Righteous Storm' },
-    { type: 'warrior', name: 'WARRIOR', desc: 'The Unstoppable Rage' },
+    { type: 'knight', name: 'KNIGHT', desc: 'The Weight of Oaths', special: 'Shield Bash (Guard Crush)', hp: 120, speed: 2.5, dmg: 12 },
+    { type: 'assassin', name: 'ASSASSIN', desc: 'A Blade in the Dark', special: 'Shadow Swap (Teleport)', hp: 80, speed: 4.0, dmg: 9 },
+    { type: 'mage', name: 'MAGE', desc: 'The Weaver of Reality', special: 'Frost Nova / Arcane Orb', hp: 75, speed: 2.8, dmg: 8 },
+    { type: 'necromancer', name: 'NECROMANCER', desc: 'The Lord of Rot', special: 'Soul Leech / Summon', hp: 85, speed: 2.5, dmg: 9 },
+    { type: 'paladin', name: 'PALADIN', desc: 'The Righteous Storm', special: 'Holy Stampede', hp: 110, speed: 3.2, dmg: 11 },
+    { type: 'warrior', name: 'WARRIOR', desc: 'The Unstoppable Rage', special: 'Whirlwind / Colossal Slam', hp: 130, speed: 3.0, dmg: 15 },
   ],
 
   // Smooth carousel position
@@ -34,9 +34,15 @@ const MenuSystem = {
   typewriterProgress: 0,
   typewriterText: '',
 
+  // Transition system
+  transition: null, // { type: 'fade'|'flash', timer, duration, maxAlpha, callback, phase: 'in'|'out' }
+
+  // Credits scroll
+  creditsScroll: 0,
+
   // Bonfire state
   bonfireOption: 0,
-  bonfireOptions: ['VITALITY +5', 'MIGHT +2', 'CELERITY +0.2', 'ASCEND'],
+  bonfireOptions: ['VITALITY +5', 'MIGHT +2', 'CELERITY +0.2', 'REST', 'ASCEND'],
   bonfireHighlightY: 0,
   bonfireHighlightTargetY: 0,
 
@@ -53,13 +59,15 @@ const MenuSystem = {
     this.typewriterText = '';
     this.menuHighlightY = 0;
     this.menuHighlightTargetY = 0;
+    this.transition = null;
+    this.creditsScroll = 0;
 
     // Initialize highlight positions
     const menuStartY = 250;
     this.menuHighlightY = menuStartY + this.menuOption * 35;
     this.menuHighlightTargetY = this.menuHighlightY;
 
-    const bonfireMy = 180;
+    const bonfireMy = 170;
     this.bonfireHighlightY = bonfireMy + 40 + this.bonfireOption * 30;
     this.bonfireHighlightTargetY = this.bonfireHighlightY;
   },
@@ -77,6 +85,12 @@ const MenuSystem = {
     // Typewriter progress
     if (this.typewriterProgress < this.typewriterText.length) {
       if (GAME.frameCount % 3 === 0) this.typewriterProgress++;
+    }
+
+    // If transitioning, block input
+    if (this.transition) {
+      this.updateTransition();
+      return;
     }
 
     // Navigate menu
@@ -98,20 +112,94 @@ const MenuSystem = {
       SFX.playUIConfirm();
       switch (this.menuOption) {
         case 0:
-          GAME.state = 'CHAR_SELECT';
-          this.resetCharSelect();
-          break;
         case 1:
-          GAME.state = 'CHAR_SELECT';
-          this.resetCharSelect();
+          // Fade transition to CHAR_SELECT
+          this.startTransition('fade', 4, 1, () => {
+            GAME.state = 'CHAR_SELECT';
+            this.resetCharSelect();
+          });
           break;
         case 2:
-          // Show controls
+          // Fade to controls
+          this.startTransition('fade', 4, 1, () => {
+            GAME.state = 'MENU_CONTROLS';
+          });
           break;
         case 3:
-          // Show credits
+          // Fade to credits
+          this.startTransition('fade', 4, 1, () => {
+            GAME.state = 'MENU_CREDITS';
+            this.creditsScroll = 0;
+          });
           break;
       }
+    }
+
+    // Update transition
+    this.updateTransition();
+  },
+
+  // ============================================================
+  // TRANSITION SYSTEM
+  // ============================================================
+
+  startTransition(type, duration, maxAlpha, callback) {
+    this.transition = {
+      type: type,
+      timer: 0,
+      duration: duration,
+      maxAlpha: maxAlpha,
+      callback: callback,
+      phase: 'in',
+    };
+  },
+
+  updateTransition() {
+    const tr = this.transition;
+    if (!tr) return;
+
+    tr.timer++;
+    const half = Math.floor(tr.duration / 2);
+
+    if (tr.type === 'fade') {
+      // 4-frame fade: 2 frames in, 2 frames out
+      if (tr.timer === half && tr.phase === 'in') {
+        if (tr.callback) tr.callback();
+        tr.phase = 'out';
+      }
+      if (tr.timer >= tr.duration) {
+        this.transition = null;
+      }
+    } else if (tr.type === 'flash') {
+      // White flash for starting game
+      if (tr.timer === 1 && tr.callback) tr.callback();
+      if (tr.timer >= tr.duration) {
+        this.transition = null;
+      }
+    }
+  },
+
+  renderTransition(ctx) {
+    const tr = this.transition;
+    if (!tr) return;
+
+    const w = GAME.width;
+    const h = GAME.height;
+
+    if (tr.type === 'fade') {
+      const half = Math.floor(tr.duration / 2);
+      let alpha;
+      if (tr.phase === 'in') {
+        alpha = tr.maxAlpha * (tr.timer / half);
+      } else {
+        alpha = tr.maxAlpha * (1 - (tr.timer - half) / (tr.duration - half));
+      }
+      ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+      ctx.fillRect(0, 0, w, h);
+    } else if (tr.type === 'flash') {
+      const alpha = tr.maxAlpha * (1 - tr.timer / tr.duration);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fillRect(0, 0, w, h);
     }
   },
 
@@ -126,7 +214,7 @@ const MenuSystem = {
     const titleY = 120;
 
     // ---------- AMBIENT BACKGROUND COLOR CYCLE ----------
-    // deep purple → dark blue → black cycle
+    // deep purple -> dark blue -> black cycle
     const cyclePhase = Math.sin(t * 0.001) * 0.5 + 0.5; // 0..1 over ~10s
     const r = Math.floor(10 + cyclePhase * 15);
     const g = Math.floor(5 + cyclePhase * 8);
@@ -226,8 +314,8 @@ const MenuSystem = {
         // Small diamond indicators
         const diamondPulse = Math.sin(t * 0.08) * 0.3 + 0.7;
         ctx.fillStyle = `rgba(255, 200, 50, ${diamondPulse})`;
-        ctx.fillText('◆', w / 2 - barW / 2 + 8, my);
-        ctx.fillText('◆', w / 2 + barW / 2 - 16, my);
+        ctx.fillText('\u25c6', w / 2 - barW / 2 + 8, my);
+        ctx.fillText('\u25c6', w / 2 + barW / 2 - 16, my);
       } else {
         ctx.fillStyle = '#555577';
         ctx.fillText(this.menuOptions[i], w / 2, my);
@@ -236,6 +324,9 @@ const MenuSystem = {
 
     ctx.textAlign = 'left';
 
+    // ---------- TRANSITION OVERLAY ----------
+    this.renderTransition(ctx);
+
     // ---------- PRESS J/K/L PROMPT (pulsing) ----------
     const promptPulse = Math.sin(t * 0.05) * 0.4 + 0.6;
     ctx.fillStyle = `rgba(200, 180, 255, ${0.3 + promptPulse * 0.4})`;
@@ -243,7 +334,7 @@ const MenuSystem = {
     ctx.textAlign = 'center';
     ctx.fillText('PRESS  J / K / L  TO SELECT', w / 2, h - 52);
     ctx.fillStyle = `rgba(150, 140, 200, 0.35)`;
-    ctx.fillText('↑ ↓ TO NAVIGATE', w / 2, h - 38);
+    ctx.fillText('\u2191 \u2193 TO NAVIGATE', w / 2, h - 38);
     ctx.textAlign = 'left';
   },
 
@@ -281,7 +372,7 @@ const MenuSystem = {
     ctx.fillStyle = 'rgba(30, 15, 40, 0.4)';
     ctx.fillRect(Math.round(spireX - 1), Math.round(spireTopY - 36), 2, 8);
 
-    // Windows — flickering with light
+    // Windows - flickering with light
     for (let i = 0; i < 18; i++) {
       const winLevel = i % levels;
       const winY = spireBaseY - winLevel * (spireHeight / levels) - spireHeight / levels * 0.4;
@@ -333,9 +424,15 @@ const MenuSystem = {
     this.carouselTarget = 0;
     this.typewriterProgress = 0;
     this.typewriterText = this.characters[0].desc;
+    this.transition = null;
   },
 
   updateCharSelect() {
+    if (this.transition) {
+      this.updateTransition();
+      return;
+    }
+
     if (IN.isBuffered('LEFT', 4)) {
       this.charSelectIndex = (this.charSelectIndex - 1 + this.characters.length) % this.characters.length;
       this.carouselDirection = -1;
@@ -355,8 +452,11 @@ const MenuSystem = {
 
     if (IN.isBuffered('LIGHT', 4) || IN.isBuffered('HEAVY', 4) || IN.isBuffered('SPECIAL', 4)) {
       SFX.playUIConfirm();
-      GAME.startGame(this.characters[this.charSelectIndex].type);
-      HUDSystem.reset();
+      // White flash transition when starting game
+      this.startTransition('flash', 3, 0.3, () => {
+        GAME.startGame(this.characters[this.charSelectIndex].type);
+        HUDSystem.reset();
+      });
     }
 
     // Back
@@ -397,6 +497,7 @@ const MenuSystem = {
     ctx.font = '18px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('CHOOSE YOUR CHAMPION', w / 2, 42);
+
     // Underline
     ctx.fillStyle = 'rgba(180, 120, 255, 0.3)';
     ctx.fillRect(w / 2 - 100, 48, 200, 1);
@@ -404,7 +505,7 @@ const MenuSystem = {
     const char = this.characters[this.charSelectIndex];
 
     // ---------- CHARACTER SILHOUETTE CAROUSEL ----------
-    const carouselY = 195;
+    const carouselY = 175;
     const previewScale = 0.7;
 
     ctx.save();
@@ -449,25 +550,29 @@ const MenuSystem = {
 
     // Name glow layers
     ctx.fillStyle = `rgba(255, 180, 0, ${namePulse * 0.3})`;
-    ctx.fillText(char.name, w / 2 + 2, 260);
-    ctx.fillText(char.name, w / 2 - 1, 258);
+    ctx.fillText(char.name, w / 2 + 2, 240);
+    ctx.fillText(char.name, w / 2 - 1, 238);
     ctx.fillStyle = '#ffd700';
-    ctx.fillText(char.name, w / 2, 258);
+    ctx.fillText(char.name, w / 2, 238);
 
     // ---------- TYPEWRITER DESCRIPTION ----------
     ctx.fillStyle = '#9988bb';
     ctx.font = '12px monospace';
     const displayText = this.typewriterText ? char.desc.substring(0, this.typewriterProgress) : '';
-    ctx.fillText(displayText + (this.typewriterProgress < char.desc.length && GAME.frameCount % 60 < 30 ? '▌' : ''), w / 2, 280);
+    ctx.fillText(displayText + (this.typewriterProgress < char.desc.length && GAME.frameCount % 60 < 30 ? '\u258c' : ''), w / 2, 258);
+
+    // ---------- SPECIAL ABILITY SUBTITLE ----------
+    ctx.fillStyle = '#7766aa';
+    ctx.font = '10px monospace';
+    ctx.fillText('Special: ' + char.special, w / 2, 274);
 
     // ---------- STAT BARS ----------
-    const tempStats = CharacterFactory.create(char.type);
     const statBarX = w / 2 - 100;
-    const statBarY = 305;
+    const statBarY = 290;
     const statBarW = 200;
     const statBarH = 8;
     const statNames = ['HP', 'SPD', 'DMG'];
-    const statValues = [tempStats.maxHP, tempStats.walkSpeed, tempStats.baseDamage || tempStats.damage];
+    const statValues = [char.hp, char.speed, char.dmg];
     const statMaxs = [150, 5, 20]; // Reference maxes for bar scaling
 
     for (let s = 0; s < 3; s++) {
@@ -518,13 +623,20 @@ const MenuSystem = {
       ctx.fillText(displayVal, statBarX + statBarW + 8, sy + statBarH);
     }
 
+    // ---------- PULSING "PRESS J TO START" ----------
+    const startPulse = Math.sin(t * 0.07) * 0.4 + 0.6;
+    ctx.fillStyle = `rgba(255, 215, 0, ${startPulse})`;
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRESS J TO START', w / 2, 370);
+
     // ---------- NAVIGATION ARROWS ----------
     ctx.fillStyle = '#8888cc';
     ctx.font = '20px monospace';
     ctx.textAlign = 'center';
     const arrowPulse = Math.sin(t * 0.06) * 3;
-    ctx.fillText('◀', w / 2 - 130, carouselY + arrowPulse);
-    ctx.fillText('▶', w / 2 + 120, carouselY + arrowPulse);
+    ctx.fillText('\u25c0', w / 2 - 130, carouselY + arrowPulse);
+    ctx.fillText('\u25b6', w / 2 + 120, carouselY + arrowPulse);
 
     // ---------- CHARACTER INDICATORS (dots) ----------
     for (let i = 0; i < this.characters.length; i++) {
@@ -537,7 +649,256 @@ const MenuSystem = {
     // ---------- BOTTOM PROMPT ----------
     ctx.fillStyle = '#555577';
     ctx.font = '10px monospace';
-    ctx.fillText('J/K/L TO SELECT  |  ← → TO NAVIGATE  |  U TO BACK', w / 2, h - 20);
+    ctx.fillText('J/K/L TO SELECT  |  \u2190 \u2192 TO NAVIGATE  |  U TO BACK', w / 2, h - 20);
+
+    // Transition overlay
+    this.renderTransition(ctx);
+
+    ctx.textAlign = 'left';
+  },
+
+  // ============================================================
+  // CONTROLS SCREEN
+  // ============================================================
+
+  updateControls() {
+    if (IN.isBuffered('LIGHT', 4) || IN.isBuffered('HEAVY', 4) || IN.isBuffered('SPECIAL', 4) || IN.isBuffered('ESCAPE', 4)) {
+      SFX.playUIConfirm();
+      GAME.state = 'MENU';
+    }
+    // Also allow back with grab
+    if (IN.isBuffered('GRAB', 4)) {
+      SFX.playUISelect();
+      GAME.state = 'MENU';
+    }
+  },
+
+  renderControls(ctx) {
+    const w = GAME.width;
+    const h = GAME.height;
+    const t = GAME.frameCount;
+
+    // Dark overlay background
+    ctx.fillStyle = '#08060e';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle purple vignette
+    const vig = ctx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.7);
+    vig.addColorStop(0, 'rgba(20, 10, 40, 0)');
+    vig.addColorStop(1, 'rgba(5, 2, 10, 0.6)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CONTROLS', w / 2, 40);
+
+    // Decorative line
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+    ctx.fillRect(w / 2 - 60, 48, 120, 1);
+
+    // Controls list
+    const controls = [
+      { keys: ['W', 'A', 'S', 'D', '/', 'Arrows'], desc: 'Move' },
+      { keys: ['J', '/', 'Z'], desc: 'Light Attack' },
+      { keys: ['K', '/', 'X'], desc: 'Heavy Attack' },
+      { keys: ['L', '/', 'C'], desc: 'Special Ability' },
+      { keys: ['U', '/', 'V'], desc: 'Grab' },
+      { keys: ['Shift'], desc: 'Block' },
+      { keys: ['W', '/', 'Up'], desc: 'Jump' },
+      { keys: ['Escape'], desc: 'Pause' },
+      { keys: ['`'], desc: 'Debug Hitboxes' },
+      { keys: ['Ctrl+M'], desc: 'Mute' },
+      { keys: ['1-6'], desc: 'Quick Character Select (at menu)' },
+    ];
+
+    const startY = 80;
+    const lineH = 34;
+
+    for (let i = 0; i < controls.length; i++) {
+      const cy = startY + i * lineH;
+      const c = controls[i];
+
+      // Row highlight on even rows for readability
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+        ctx.fillRect(w / 2 - 200, cy - 12, 400, lineH - 4);
+      }
+
+      // Draw key icons
+      const keyParts = [];
+      for (const k of c.keys) {
+        if (k === '/') {
+          keyParts.push({ type: 'sep', text: '/' });
+        } else {
+          keyParts.push({ type: 'key', text: k });
+        }
+      }
+
+      // Calculate total key width for centering
+      ctx.font = '10px monospace';
+      let totalKeyW = 0;
+      for (const kp of keyParts) {
+        if (kp.type === 'key') {
+          const tw = ctx.measureText(kp.text).width;
+          totalKeyW += Math.max(tw + 8, 20); // min 20px key width
+        } else {
+          totalKeyW += ctx.measureText(kp.text).width + 4;
+        }
+      }
+
+      let kx = w / 2 - 140 - totalKeyW / 2;
+      const ky = cy;
+
+      for (const kp of keyParts) {
+        if (kp.type === 'key') {
+          const tw = ctx.measureText(kp.text).width;
+          const kw = Math.max(tw + 8, 20);
+          const kh = 16;
+
+          // Key background (pixel-art style)
+          ctx.fillStyle = '#2a2a3a';
+          ctx.fillRect(Math.round(kx), ky - kh + 2, Math.round(kw), kh);
+          // Key highlight (top-left)
+          ctx.fillStyle = '#3a3a50';
+          ctx.fillRect(Math.round(kx), ky - kh + 2, Math.round(kw), 2);
+          ctx.fillRect(Math.round(kx), ky - kh + 2, 2, kh);
+          // Key shadow (bottom-right)
+          ctx.fillStyle = '#15151f';
+          ctx.fillRect(Math.round(kx), ky + 1, Math.round(kw), 1);
+          ctx.fillRect(Math.round(kx) + Math.round(kw) - 1, ky - kh + 2, 1, kh);
+          // Key text
+          ctx.fillStyle = '#ccccdd';
+          ctx.font = '9px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(kp.text, Math.round(kx) + Math.round(kw) / 2, ky - 3);
+          ctx.textAlign = 'left';
+
+          kx += kw + 3;
+        } else {
+          ctx.fillStyle = '#555566';
+          ctx.font = '10px monospace';
+          ctx.fillText(kp.text, kx, ky - 2);
+          kx += ctx.measureText(kp.text).width + 4;
+        }
+      }
+
+      // Description text
+      ctx.fillStyle = '#aaaacc';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(c.desc, w / 2 - 30, cy - 2);
+    }
+
+    // Back prompt
+    const backPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
+    ctx.fillStyle = `rgba(200, 180, 255, ${backPulse})`;
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRESS J / K / ESCAPE TO GO BACK', w / 2, h - 20);
+
+    ctx.textAlign = 'left';
+  },
+
+  // ============================================================
+  // CREDITS SCREEN
+  // ============================================================
+
+  updateCredits() {
+    this.creditsScroll += 0.5;
+
+    if (IN.isBuffered('LIGHT', 4) || IN.isBuffered('HEAVY', 4) || IN.isBuffered('SPECIAL', 4) || IN.isBuffered('ESCAPE', 4)) {
+      SFX.playUIConfirm();
+      GAME.state = 'MENU';
+    }
+    if (IN.isBuffered('GRAB', 4)) {
+      SFX.playUISelect();
+      GAME.state = 'MENU';
+    }
+  },
+
+  renderCredits(ctx) {
+    const w = GAME.width;
+    const h = GAME.height;
+    const t = GAME.frameCount;
+
+    // Deep dark background
+    ctx.fillStyle = '#050308';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle star field
+    for (let i = 0; i < 30; i++) {
+      const sx = (i * 197 + 80) % w;
+      const sy = (i * 83 + 30) % h;
+      const twinkle = Math.sin(t * 0.02 + i * 3.1) * 0.3 + 0.4;
+      ctx.fillStyle = `rgba(200, 200, 255, ${twinkle * 0.5})`;
+      ctx.fillRect(sx, sy, 1, 1);
+    }
+
+    // Title (fixed at top)
+    const titlePulse = Math.sin(t * 0.03) * 0.15 + 0.85;
+    ctx.fillStyle = `rgba(255, 215, 0, ${titlePulse})`;
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PIXEL FURY: ETHEREAL SPIRE', w / 2, 50);
+
+    // Subtitle
+    ctx.fillStyle = 'rgba(180, 160, 220, 0.7)';
+    ctx.font = '12px monospace';
+    ctx.fillText('A Z.AI Production', w / 2, 70);
+
+    // Decorative line
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+    ctx.fillRect(w / 2 - 80, 78, 160, 1);
+
+    // Scrolling credits content
+    const credits = [
+      '',
+      '',
+      'Game Design & Programming',
+      '',
+      'Pixel Art & Animation',
+      '',
+      'Sound Design',
+      '',
+      'QA Testing',
+      '',
+      'Special Thanks',
+      '',
+      '',
+      '',
+      'Thank you for playing!',
+    ];
+
+    const scrollY = 150 - this.creditsScroll;
+    const lineH = 28;
+
+    for (let i = 0; i < credits.length; i++) {
+      const cy = scrollY + i * lineH;
+      if (cy < 90 || cy > h - 40) continue;
+
+      const line = credits[i];
+      if (line === '') continue;
+
+      // Fade based on vertical position
+      const fadeTop = Math.min(1, Math.max(0, (cy - 90) / 40));
+      const fadeBot = Math.min(1, Math.max(0, (h - 40 - cy) / 40));
+      const alpha = fadeTop * fadeBot;
+
+      ctx.fillStyle = `rgba(220, 210, 240, ${alpha})`;
+      ctx.font = '13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(line, w / 2, cy);
+    }
+
+    // Back prompt
+    const backPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
+    ctx.fillStyle = `rgba(200, 180, 255, ${backPulse})`;
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRESS J / K / ESCAPE TO GO BACK', w / 2, h - 20);
 
     ctx.textAlign = 'left';
   },
@@ -588,11 +949,18 @@ const MenuSystem = {
 
     // Navigate
     if (IN.isBuffered('LIGHT', 4) || IN.isBuffered('HEAVY', 4) || IN.isBuffered('SPECIAL', 4)) {
-      if (this.bonfireOption === 3) {
-        // Continue
+      if (this.bonfireOption === 4) {
+        // ASCEND
+        SFX.playLevelUp();
         TowerSystem.continueFromBonfire();
         HUDSystem.reset();
+      } else if (this.bonfireOption === 3) {
+        // REST - full heal, no shards
+        if (GAME.player) {
+          GAME.player.hp = GAME.player.maxHP;
+        }
         SFX.playUIConfirm();
+        ParticleSystem.addSparks(GAME.width / 2, GAME.height - 80, 8);
       } else {
         // Upgrade
         const stats = ['health', 'damage', 'speed'];
@@ -623,6 +991,32 @@ const MenuSystem = {
     vignette.addColorStop(1, 'rgba(10, 5, 0, 0.4)');
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, w, h);
+
+    // ---------- FLICKERING FIRE VISUAL (center) ----------
+    const fireX = w / 2;
+    const fireY = h / 2 + 60;
+
+    // Animated fire pixels
+    for (let py = 0; py < 20; py++) {
+      for (let px = -5; px <= 5; px++) {
+        const dist = Math.abs(px) / 5;
+        const heightFade = 1 - py / 20;
+        const flicker = Math.sin(t * 0.3 + px * 1.7 + py * 0.5) * 0.5 + 0.5;
+        const alpha = heightFade * (1 - dist * 0.7) * flicker * 0.6;
+
+        if (alpha > 0.05) {
+          const r = 255;
+          const g = Math.floor(100 + (1 - dist) * 155 * heightFade);
+          const b = Math.floor((1 - heightFade) * 60);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          ctx.fillRect(
+            fireX + px * 3 + Math.round(Math.sin(t * 0.2 + px) * 1.5),
+            fireY - py * 2,
+            3, 3
+          );
+        }
+      }
+    }
 
     // ---------- DRAMATIC BONFIRE ----------
     const bfx = w / 2;
@@ -721,19 +1115,41 @@ const MenuSystem = {
     ctx.fillStyle = `rgba(255, 180, 40, 0.08)`;
     ctx.fillRect(shardX - 40, shardY - 16, 80, 40);
 
+    // ---------- CURRENT STATS DISPLAY ----------
+    const player = GAME.player;
+    if (player) {
+      ctx.fillStyle = '#ccaa66';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`HP: ${player.hp}/${player.maxHP}  |  Floor: ${TowerSystem.currentFloor}  |  Score: ${GAME.score}`, w / 2, 108);
+    }
+
     // ---------- UPGRADE OPTIONS AS FLOATING RUNE CARDS ----------
-    const cardBaseY = 140;
-    const cardH = 42;
-    const cardW = 180;
+    const cardBaseY = 130;
+    const cardH = 38;
+    const cardW = 200;
     const cardX = w / 2 - cardW / 2;
 
     // Rune icons for each option
-    const runeIcons = ['❤', '⚔', '⚡', '▲'];
-    const runeLabels = ['VITALITY', 'MIGHT', 'CELERITY', 'ASCEND'];
-    const runeSubs = ['+5 MAX HP', '+2 DAMAGE', '+0.2 SPEED', 'NEXT FLOOR'];
+    const runeIcons = ['\u2764', '\u2694', '\u26a1', '\u2727', '\u25b2'];
+    const runeLabels = ['VITALITY', 'MIGHT', 'CELERITY', 'REST', 'ASCEND'];
+
+    // Dynamic sub-texts showing current values
+    let runeSubs;
+    if (player) {
+      runeSubs = [
+        `+5 MAX HP (${player.maxHP} \u2192 ${player.maxHP + 5})`,
+        `+2 DAMAGE (${player.baseDamage || player.damage} \u2192 ${(player.baseDamage || player.damage) + 2})`,
+        `+0.2 SPEED (${player.walkSpeed.toFixed(1)} \u2192 ${(player.walkSpeed + 0.2).toFixed(1)})`,
+        'Full Heal (Free)',
+        'Next Floor',
+      ];
+    } else {
+      runeSubs = ['+5 MAX HP', '+2 DAMAGE', '+0.2 SPEED', 'Full Heal (Free)', 'NEXT FLOOR'];
+    }
 
     for (let i = 0; i < this.bonfireOptions.length; i++) {
-      const cy = cardBaseY + i * (cardH + 10);
+      const cy = cardBaseY + i * (cardH + 6);
       const isSelected = i === this.bonfireOption;
 
       // Card background
@@ -767,23 +1183,26 @@ const MenuSystem = {
       // Rune icon
       ctx.fillStyle = isSelected ? '#ffcc44' : '#665544';
       ctx.font = '16px monospace';
-      ctx.fillText(runeIcons[i], cardX + 20, cy + 30);
+      ctx.textAlign = 'center';
+      ctx.fillText(runeIcons[i], cardX + 20, cy + 26);
 
       // Label
       ctx.fillStyle = isSelected ? '#ffd700' : '#776655';
       ctx.font = '12px monospace';
-      ctx.fillText(runeLabels[i], cardX + 45, cy + 22);
+      ctx.textAlign = 'left';
+      ctx.fillText(runeLabels[i], cardX + 40, cy + 18);
 
       // Sub text
       ctx.fillStyle = isSelected ? '#cc9944' : '#554433';
       ctx.font = '9px monospace';
-      ctx.fillText(runeSubs[i], cardX + 45, cy + 36);
+      ctx.fillText(runeSubs[i], cardX + 40, cy + 32);
     }
 
     // Bottom prompt
     ctx.fillStyle = '#554433';
     ctx.font = '9px monospace';
-    ctx.fillText('J/K/L TO SELECT  |  ↑ ↓ TO NAVIGATE', w / 2, h - 15);
+    ctx.textAlign = 'center';
+    ctx.fillText('J/K/L TO SELECT  |  \u2191 \u2193 TO NAVIGATE', w / 2, h - 15);
 
     ctx.textAlign = 'left';
   },

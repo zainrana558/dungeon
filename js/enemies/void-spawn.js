@@ -1,6 +1,8 @@
 // ============================================================
 // PIXEL FURY: ETHEREAL SPIRE — Void Spawn (Tier 5: The Void)
-// Ethereal, phase in/out, invincible 50% of time. Only damageable right after attack.
+// Ethereal, phase in/out, invincible 50% of time.
+// Enhanced: teleport behind player, visual clone (confusion),
+// phase in/out with new position on each cycle.
 // ============================================================
 
 class VoidSpawn extends Enemy {
@@ -28,10 +30,24 @@ class VoidSpawn extends Enemy {
     this.phaseInterval = 60; // Switch every 60 frames
     this.vulnerableWindow = 0;
     this.teleportCooldown = 0;
+
+    // === NEW: Visual clone (doesn't deal damage, causes confusion) ===
+    this.clone = null;
+    this.cloneTimer = 0;
+    this.cloneInterval = 180; // Spawn clone every 3 seconds
+
+    // === NEW: Teleport behind player frequently ===
+    this.behindTeleportTimer = 150 + Math.floor(Math.random() * 60);
+
+    // === NEW: Phase to new position (not just drift) ===
+    this._phaseNewX = 0;
+    this._phaseNewY = 0;
   }
 
   update() {
     if (this.dead) {
+      // Clean up clone on death
+      this.clone = null;
       this.deathTimer++;
       return;
     }
@@ -39,13 +55,56 @@ class VoidSpawn extends Enemy {
     this.stateTimer++;
     this.animFrame++;
 
-    // Phase toggle
+    const player = GAME.player;
+    const hasPlayer = player && !player.dead;
+
+    // === CLONE SPAWNING ===
+    this.cloneTimer++;
+    if (this.cloneTimer >= this.cloneInterval && !this.phased) {
+      this.cloneTimer = 0;
+      // Spawn a visual clone that doesn't deal damage
+      if (hasPlayer) {
+        const cloneOffset = (Math.random() > 0.5 ? 1 : -1) * (80 + Math.random() * 60);
+        this.clone = {
+          x: player.x + cloneOffset,
+          y: this.groundY - this.height,
+          life: 120, // 2 seconds
+        };
+        ParticleSystem.addTeleportEffect(this.clone.x + this.width / 2, this.clone.y + this.height / 2, '#ff00ff');
+      }
+    }
+    // Update clone lifetime
+    if (this.clone) {
+      this.clone.life--;
+      if (this.clone.life <= 0) {
+        this.clone = null;
+      }
+    }
+
+    // === PHASE TOGGLE with new position ===
     this.phaseTimer++;
     if (this.phaseTimer >= this.phaseInterval) {
       this.phaseTimer = 0;
       this.phased = !this.phased;
-      // Brief vulnerable window right after phasing in
-      if (!this.phased) this.vulnerableWindow = 15;
+
+      if (!this.phased) {
+        // Phase IN: brief vulnerable window
+        this.vulnerableWindow = 15;
+        // Appear at new position
+        if (hasPlayer) {
+          // Teleport to a position near player but not on top
+          const offsetX = (Math.random() - 0.5) * 120;
+          this._phaseNewX = player.x + offsetX;
+          this._phaseNewX = Math.max(20, Math.min(GAME.width - this.width - 20, this._phaseNewX));
+          this._phaseNewY = this.groundY - this.height;
+          this.x = this._phaseNewX;
+          this.y = this._phaseNewY;
+          ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#aa00ff');
+        }
+      } else {
+        // Phase OUT: become invincible, drift
+        ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#8800ff');
+      }
     }
     if (this.vulnerableWindow > 0) this.vulnerableWindow--;
 
@@ -54,10 +113,9 @@ class VoidSpawn extends Enemy {
     if (this.flashWhite > 0) this.flashWhite--;
 
     if (this.phased) {
-      // Invisible and invincible — drift toward player
+      // Invisible and invincible — drift toward player's new position
       this.invincible = true;
-      const player = GAME.player;
-      if (player && !player.dead) {
+      if (hasPlayer) {
         this.x += (player.x - this.x) * 0.02;
         this.y += (player.y - this.y) * 0.02;
       }
@@ -65,6 +123,28 @@ class VoidSpawn extends Enemy {
     }
 
     this.invincible = false;
+
+    // === TELEPORT BEHIND PLAYER frequently ===
+    this.behindTeleportTimer--;
+    if (this.behindTeleportTimer <= 0 && hasPlayer) {
+      this.behindTeleportTimer = 150 + Math.floor(Math.random() * 60);
+      // Teleport behind the player
+      const behindX = player.facingRight
+        ? player.x - 50 - Math.random() * 30
+        : player.x + player.width + 20 + Math.random() * 30;
+      ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#8800ff');
+      this.x = Math.max(10, Math.min(GAME.width - this.width - 10, behindX));
+      this.y = this.groundY - this.height;
+      ParticleSystem.addTeleportEffect(this.x + this.width / 2, this.y + this.height / 2, '#aa00ff');
+      SFX.playImpact('light');
+
+      // Attack immediately after teleporting behind
+      if (this.attackCooldown <= 0) {
+        this.attackPlayer();
+        this.teleportCooldown = 90;
+      }
+      return;
+    }
 
     // Attack right after appearing
     if (this.attackCooldown <= 0 && this.vulnerableWindow > 0) {
@@ -114,6 +194,17 @@ class VoidSpawn extends Enemy {
       return;
     }
 
+    // === RENDER CLONE (visual only, no damage) ===
+    if (this.clone && !this.phased) {
+      const cloneAlpha = Math.min(1, this.clone.life / 30) * 0.5;
+      ctx.globalAlpha = cloneAlpha;
+      this.renderVoidAt(ctx, this.clone.x, this.clone.y);
+      // Clone label
+      ctx.fillStyle = `rgba(200, 0, 255, ${cloneAlpha * 0.5})`;
+      ctx.fillRect(this.clone.x + this.width / 2 - 2, this.clone.y - 6, 4, 2);
+      ctx.globalAlpha = 1;
+    }
+
     if (this.phased) {
       ctx.globalAlpha = 0.15;
       this.renderVoid(ctx);
@@ -131,9 +222,10 @@ class VoidSpawn extends Enemy {
   }
 
   renderVoid(ctx) {
-    const x = Math.round(this.x);
-    const y = Math.round(this.y);
+    this.renderVoidAt(ctx, Math.round(this.x), Math.round(this.y));
+  }
 
+  renderVoidAt(ctx, x, y) {
     // Ethereal body
     const flicker = Math.sin(this.animFrame * 0.3) * 0.3 + 0.7;
     ctx.fillStyle = `rgba(60, 0, 80, ${flicker})`;

@@ -58,7 +58,7 @@ class Enemy {
     this.invincible = false;
     this.invincibleTimer = 0;
 
-    // Blocking (for orcs)
+    // Blocking (for orcs and patient enemies)
     this.isBlocking = false;
     this.blockTimer = 0;
     this.blockDuration = 120;
@@ -70,6 +70,9 @@ class Enemy {
     this.dead = false;
     this.deathTimer = 0;
     this.fearActive = false;
+
+    // Patience wait counter (used by enhanced AI)
+    this._patienceWait = null;
 
     // Specific behavior flags
     this.behaviorFlags = {};
@@ -128,12 +131,34 @@ class Enemy {
     this.applyGravity();
     this.x = Math.max(0, Math.min(this.x, GAME.width - this.width));
 
-    // Block cycle for orcs
-    if (this.blockTimer > 0) {
-      this.blockTimer--;
-      if (this.blockTimer <= 0) {
-        this.isBlocking = !this.isBlocking;
-        this.blockTimer = this.isBlocking ? this.blockDuration : this.blockGap;
+    // Smart reactive block cycle — only for patient enemies
+    if (this.drives.patience > 50) {
+      const player = GAME.player;
+      const playerFacingUs = player && (
+        (player.facingRight && player.x < this.x) ||
+        (!player.facingRight && player.x > this.x)
+      );
+      const playerInRange = player && Math.abs(player.x - this.x) < 100;
+      const playerAttacking = player && player.state === 'attack';
+
+      // 6-frame read window: start blocking when player begins attack
+      if (!this.isBlocking && playerFacingUs && playerInRange && playerAttacking && this.blockTimer <= 0) {
+        if (player.currentAttacks && player.currentAttacks.length > 0) {
+          const latestAttack = player.currentAttacks[player.currentAttacks.length - 1];
+          if (latestAttack && latestAttack.timer <= 6) {
+            this.isBlocking = true;
+            this.blockTimer = this.blockDuration;
+          }
+        }
+      }
+
+      // Cycle out of block
+      if (this.isBlocking) {
+        this.blockTimer--;
+        if (this.blockTimer <= 0) {
+          this.isBlocking = false;
+          this.blockTimer = this.blockGap;
+        }
       }
     }
   }
@@ -151,9 +176,8 @@ class Enemy {
     }
   }
 
-  // Override per enemy type
+  // Enhanced AI: drive-based behavior with patience, aggression, fear, greed
   updateAI() {
-    // Basic AI: move toward player with EXPONENTIAL SMOOTHING
     const player = GAME.player;
     if (!player || player.dead) return;
 
@@ -161,27 +185,87 @@ class Enemy {
     const dist = Math.abs(dx);
     this.facingRight = dx > 0;
 
-    // Fear: if HP low and fear drive high, retreat
-    if (this.hp < this.maxHP * 0.3 && this.drives.fear > 50 && !this.fearActive) {
-      this.fearActive = true;
-      this.walkSpeed *= 1.3;
+    // === FEAR RETREAT ===
+    // When HP < 30% and fear > 50, 20% chance per frame to back away
+    if (this.hp < this.maxHP * 0.3 && this.drives.fear > 50) {
+      if (!this.fearActive) {
+        this.fearActive = true;
+        this.walkSpeed *= 1.3;
+      }
+      if (Math.random() < 0.2) {
+        this._aiTargetSpeed = this.facingRight ? -this.walkSpeed : this.walkSpeed;
+        this._smoothApproach();
+        this.state = 'walk';
+        return;
+      }
     }
 
+    // === AGGRESSION VARIABILITY ===
+    // Higher aggression = faster approach speed
+    const aggroMult = 0.7 + (this.drives.aggression / 100) * 0.6;
+    const effectiveSpeed = this.walkSpeed * aggroMult;
+
+    // === STAGGERED APPROACH ===
+    // Only 2 enemies can be in attack range at once
+    const attackRange = 80;
+    let enemiesInAttackRange = 0;
+    if (GAME.enemies) {
+      for (const e of GAME.enemies) {
+        if (e === this || e.dead) continue;
+        const eDist = Math.abs(e.x - player.x);
+        if (eDist < attackRange) enemiesInAttackRange++;
+      }
+    }
+    const canAttack = enemiesInAttackRange < 2;
+
+    // === PATIENCE SYSTEM ===
+    // Wait patience * 0.5 frames before attacking (creates tension)
     const preferredDist = 60;
+    if (dist <= preferredDist + 20 && dist >= preferredDist - 20 && this._patienceWait == null) {
+      this._patienceWait = Math.floor(this.drives.patience * 0.5);
+    }
+    if (dist > preferredDist + 40) {
+      this._patienceWait = null;
+    }
+
+    // === GREED FLANKING ===
+    // High greed enemies approach at a vertical offset instead of straight line
+    let flankingY = 0;
+    if (this.drives.greed > 60 && dist > 80) {
+      const flankDir = ((this.id.charCodeAt(this.id.length - 1) || 0) % 2 === 0) ? -1 : 1;
+      flankingY = flankDir * 0.8;
+    }
+
+    // === MOVEMENT & ATTACK ===
     if (dist > preferredDist + 20) {
-      // Move toward player with exponential smoothing
-      this._aiTargetSpeed = this.facingRight ? this.walkSpeed : -this.walkSpeed;
+      this._aiTargetSpeed = this.facingRight ? effectiveSpeed : -effectiveSpeed;
       this._smoothApproach();
+      this.y += flankingY;
       this.state = 'walk';
     } else if (dist < preferredDist - 20 && this.fearActive) {
-      this._aiTargetSpeed = this.facingRight ? -this.walkSpeed : this.walkSpeed;
+      this._aiTargetSpeed = this.facingRight ? -effectiveSpeed : effectiveSpeed;
       this._smoothApproach();
-    } else if (dist <= preferredDist && this.attackCooldown <= 0) {
-      this.attackPlayer();
-      this._aiTargetSpeed = 0;
+    } else if (dist <= preferredDist && this.attackCooldown <= 0 && canAttack) {
+      // Patience check: must wait before attacking
+      if (this._patienceWait != null && this._patienceWait > 0) {
+        this._patienceWait--;
+        this._aiTargetSpeed = 0;
+        this._smoothApproach();
+        this.state = 'idle';
+      } else {
+        // ATTACK VARIETY: 30% chance for heavy attack (longer range, more recovery)
+        if (Math.random() < 0.3) {
+          this.heavyAttackPlayer();
+        } else {
+          this.attackPlayer();
+        }
+        this._patienceWait = null;
+        this._aiTargetSpeed = 0;
+      }
     } else if (dist > preferredDist) {
-      this._aiTargetSpeed = this.facingRight ? this.walkSpeed : -this.walkSpeed;
+      this._aiTargetSpeed = this.facingRight ? effectiveSpeed : -effectiveSpeed;
       this._smoothApproach();
+      this.y += flankingY;
       this.state = 'walk';
     } else {
       this._aiTargetSpeed = 0;
@@ -198,7 +282,9 @@ class Enemy {
   }
 
   attackPlayer() {
-    this.attackCooldown = 40 + Math.floor(Math.random() * 30);
+    // Aggression reduces cooldown (higher aggression = more frequent attacks)
+    const aggroCooldownReduction = Math.floor((this.drives.aggression / 100) * 20);
+    this.attackCooldown = Math.max(20, 40 + Math.floor(Math.random() * 30) - aggroCooldownReduction);
     this.state = 'attack';
     this.currentAttacks.push(CMB.createAttack(this, {
       startup: 8, active: 4, recovery: 10,
@@ -207,6 +293,22 @@ class Enemy {
       knockback: 4, hitstun: 12,
       whooshFrame: 6,
     }));
+  }
+
+  /** Heavy attack: longer range, more recovery, guard crush. Used by base AI variety. */
+  heavyAttackPlayer() {
+    const aggroCooldownReduction = Math.floor((this.drives.aggression / 100) * 15);
+    this.attackCooldown = Math.max(30, 60 + Math.floor(Math.random() * 20) - aggroCooldownReduction);
+    this.state = 'attack';
+    this.currentAttacks.push(CMB.createAttack(this, {
+      startup: 14, active: 5, recovery: 22,
+      damage: this.damage * 1.6,
+      hitbox: { x: 18, y: 0, w: 40, h: 28 },
+      knockback: 7, hitstun: 18,
+      whooshFrame: 10,
+      guardCrush: true,
+    }));
+    SFX.playImpact('heavy');
   }
 
   takeDamage(amount, attacker, attack) {

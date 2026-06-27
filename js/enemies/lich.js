@@ -1,6 +1,7 @@
 // ============================================================
 // BOSS 3: THE UNDEAD LICH (Malachar the Eternal) — Floor 15
 // Spell rotation, fake casts, teleport, 10-frame vulnerability window
+// Enhanced: spread projectile spam, shield phase, death explosion
 // ============================================================
 
 class UndeadLich extends Enemy {
@@ -41,6 +42,21 @@ class UndeadLich extends Enemy {
     // Vulnerability
     this.vulnerable = false;
     this.vulnerableWindow = 0;
+
+    // === NEW: Frequent teleport (every 4-6 seconds) ===
+    this.teleportTimer = 240 + Math.floor(Math.random() * 120); // 4-6s at 60fps
+    this.teleportCooldownMax = 240;
+
+    // === NEW: Spread projectile spam (every 3 seconds) ===
+    this.spreadSpamTimer = 180;
+
+    // === NEW: Shield phase ===
+    this.shieldPhase = false;
+    this.shieldTimer = 0;
+    this.shieldTriggered = false;
+
+    // === NEW: Death explosion flag ===
+    this._deathExplosionDone = false;
   }
 
   updateAI() {
@@ -50,6 +66,49 @@ class UndeadLich extends Enemy {
     // Float
     this.y = this.groundY - this.floatHeight + Math.sin(GAME.frameCount * 0.04) * 4;
     this.facingRight = player.x > this.x;
+
+    // === SHIELD PHASE at 50% HP ===
+    if (!this.shieldTriggered && this.hp <= this.maxHP * 0.5) {
+      this.shieldTriggered = true;
+      this.shieldPhase = true;
+      this.shieldTimer = 60;
+      this.invincible = true;
+      this.casting = false;
+      this.state = 'idle';
+      ParticleSystem.addExplosion(this.x + this.width / 2, this.y + this.height / 2, 30, '#44ffaa');
+      SFX.playSpecial('lich');
+    }
+
+    if (this.shieldPhase) {
+      this.shieldTimer--;
+      // Slowly drift during shield phase
+      this.x += (player.x > this.x ? 0.3 : -0.3);
+      if (this.shieldTimer <= 0) {
+        this.shieldPhase = false;
+        this.invincible = false;
+        this.spellCooldown = 30; // Brief pause after shield
+        ParticleSystem.addExplosion(this.x + this.width / 2, this.y + this.height / 2, 20, '#88ffcc');
+      }
+      return;
+    }
+
+    // === FREQUENT TELEPORT (every 4-6 seconds) ===
+    this.teleportTimer--;
+    if (this.teleportTimer <= 0) {
+      this.teleportTimer = 240 + Math.floor(Math.random() * 120);
+      this.teleport();
+      this.spellCooldown = 25;
+      return;
+    }
+
+    // === SPREAD PROJECTILE SPAM (every 3 seconds) ===
+    this.spreadSpamTimer--;
+    if (this.spreadSpamTimer <= 0 && !this.casting) {
+      this.spreadSpamTimer = 180;
+      this.fireSpreadProjectiles();
+      this.spellCooldown = 20;
+      return;
+    }
 
     if (this.spellCooldown > 0) {
       this.spellCooldown--;
@@ -69,11 +128,46 @@ class UndeadLich extends Enemy {
 
     // Decide: cast spell or fake cast
     if (Math.random() < 0.25 && !this.fakeCast) {
-      // Fake cast: start casting, cancel at frame 14
       this.startFakeCast();
     } else {
       this.castCurrentSpell();
     }
+  }
+
+  /** NEW: Fire 3 homing projectiles in a spread pattern */
+  fireSpreadProjectiles() {
+    const player = GAME.player;
+    if (!player) return;
+    this.state = 'attack';
+    SFX.playSpecial('lich');
+
+    const cx = this.x + this.width / 2;
+    const cy = this.y + this.height / 2;
+    const baseAngle = Math.atan2(player.y - cy, player.x - cx);
+    const spreadAngle = 0.35; // ~20 degrees between each
+
+    for (let i = -1; i <= 1; i++) {
+      const angle = baseAngle + i * spreadAngle;
+      CMB.spawnProjectile({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * 3,
+        vy: Math.sin(angle) * 3,
+        w: 8, h: 8,
+        damage: 8,
+        owner: this,
+        ownerIsPlayer: false,
+        life: 180,
+        color: '#66ff66',
+        glow: 'rgba(0, 255, 100, 0.4)',
+        homing: true,
+        homingTarget: player,
+        homingStrength: 0.5,
+      });
+    }
+
+    // Reset state after brief visual
+    setTimeout(() => { if (!this.dead) this.state = 'idle'; }, 200);
   }
 
   startFakeCast() {
@@ -199,6 +293,13 @@ class UndeadLich extends Enemy {
   }
 
   takeDamage(amount, attacker, attack) {
+    // Shield phase: completely invincible
+    if (this.shieldPhase) {
+      ParticleSystem.addSparks(this.x + this.width / 2, this.y + this.height / 2, 5);
+      SFX.playImpact('light');
+      return;
+    }
+
     // Fake cast: if player tries to interrupt, they wasted their move
     if (this.fakeCast && this.casting) {
       // Successfully baited!
@@ -230,6 +331,37 @@ class UndeadLich extends Enemy {
           this.hp = Math.min(this.maxHP, this.hp + 2);
         }
       }
+    }
+
+    // Death explosion: 8 projectiles in all directions
+    if (this.dead && !this._deathExplosionDone) {
+      this._deathExplosionDone = true;
+      const cx = this.x + this.width / 2;
+      const cy = this.y + this.height / 2;
+      const player = GAME.player;
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 / 8) * i;
+        CMB.spawnProjectile({
+          x: cx,
+          y: cy,
+          vx: Math.cos(angle) * 3.5,
+          vy: Math.sin(angle) * 3.5,
+          w: 8, h: 8,
+          damage: 12,
+          owner: this,
+          ownerIsPlayer: false,
+          life: 120,
+          color: '#44ff88',
+          glow: 'rgba(0, 255, 100, 0.5)',
+        });
+      }
+      ParticleSystem.addExplosion(cx, cy, 50, '#44ff44');
+      GAME.triggerShake(4, 12);
+      SFX.playImpact('ko');
+      // Reset special states on death
+      this.shieldPhase = false;
+      this.invincible = false;
+      this.casting = false;
     }
   }
 
@@ -284,6 +416,18 @@ class UndeadLich extends Enemy {
       ctx.beginPath();
       ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 30 + this.castTimer * 0.5, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // Shield phase visual
+    if (this.shieldPhase) {
+      const shieldPulse = Math.sin(GAME.frameCount * 0.15) * 0.2 + 0.5;
+      ctx.strokeStyle = `rgba(100, 255, 200, ${shieldPulse})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 35, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(100, 255, 200, ${shieldPulse * 0.15})`;
+      ctx.fillRect(this.x - 8, this.y - 8, this.width + 16, this.height + 16);
     }
 
     // Vulnerable window visual
@@ -343,5 +487,9 @@ class UndeadLich extends Enemy {
     super.die();
     // Green fire dims and goes out
     this._lichDeath = true;
+    // Reset special states
+    this.shieldPhase = false;
+    this.invincible = false;
+    this.casting = false;
   }
 };

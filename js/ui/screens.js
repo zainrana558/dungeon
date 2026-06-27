@@ -468,10 +468,8 @@ const ScreenSystem = {
 
       // Render boss as silhouette (override colors to dark)
       const boss = GAME.boss;
-      if (boss.renderEnemy) {
-        ctx.fillStyle = '#000000';
-        boss.renderEnemy(ctx);
-      }
+      ctx.fillStyle = '#000000';
+      boss.render(ctx);
 
       ctx.restore();
 

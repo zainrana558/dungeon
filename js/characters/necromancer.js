@@ -173,6 +173,7 @@ class Necromancer extends Character {
           if (CMB.rectsOverlap(beamBox, hurtbox)) {
             target.takeDamage(1, this, atk);
             this.hp = Math.min(this.maxHP, this.hp + 1);
+            DamageNumbers.add(this.x + this.width / 2, this.y - 5, 1, 'heal');
             break;
           }
         }

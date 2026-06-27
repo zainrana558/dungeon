@@ -58,6 +58,10 @@ const TowerSystem = {
     GAME.enemies = [];
     GAME.boss = null;
 
+    // Switch ambient audio for new floor type
+    SFX.stopAmbient();
+    SFX.playAmbient(this.floorType);
+
     // Rest floor
     if (this.floorType === 'bonfire') {
       this.atBonfire = true;
@@ -311,7 +315,7 @@ const TowerSystem = {
 
   renderFloor(ctx) {
     if (GAME.state === 'BONFIRE') {
-      AN.drawFloor(ctx, 'bonfire');
+      FloorRenderer.render(ctx, 'bonfire', this.currentFloor);
       this.renderBonfire(ctx);
       return;
     }
@@ -335,16 +339,8 @@ const TowerSystem = {
     this._renderAtmosphericFog(ctx);
     ctx.restore();
 
-    // --- FOREGROUND — game floor ---
-    if (this.floorType === 'boss') {
-      RoomSystem.renderRoom(ctx, this.currentFloor);
-      AN.drawFloor(ctx, 'boss');
-    } else {
-      AN.drawFloor(ctx, this.floorType);
-    }
-
-    // --- FOREGROUND PARTICLES ---
-    this._renderFloorParticles(ctx);
+    // --- FOREGROUND — enhanced tiled floor via FloorRenderer ---
+    FloorRenderer.render(ctx, this.floorType, this.currentFloor);
 
     // --- FLOOR NUMBER with subtle glow ---
     this._renderFloorHUD(ctx);

@@ -180,6 +180,7 @@ const CombatSystem = {
       );
 
       // Screen flash for block hitstop
+      DamageNumbers.add(target.x + target.width / 2, target.y - 5, 'BLOCKED', 'blocked');
       GAME.triggerFlash('rgba(255, 255, 255, 0.06)', 4);
     } else {
       // Apply damage
@@ -268,6 +269,7 @@ const CombatSystem = {
         SFX.playGrunt(target.characterType || 'default', damage);
       }
 
+      DamageNumbers.add(target.x + target.width / 2, target.y - 5, damage, willKill ? 'ko' : isCounterHit ? 'counter' : damage > 12 ? 'heavy' : 'damage');
       // Knockback
       if (attack.knockback > 0) {
         const dir = attacker.x < target.x ? 1 : -1;

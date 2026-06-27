@@ -53,7 +53,7 @@ class Character {
     this.comboTimer = 0;
 
     // Blocking
-    this.isBlocking = false;
+    this._blocking = false;
     this.blockStun = 0;
 
     // Hitstun / Knockback
@@ -88,6 +88,14 @@ class Character {
     this.victoryPose = false;
     this.defeatPose = false;
     this.poseTimer = 0;
+  }
+
+  // Getter so isBlocking works as both a boolean property check
+  // and as target.isBlocking(attacker) in the combat system
+  isBlocking(attacker) {
+    if (!this._blocking) return false;
+    if (attacker) return this.isBlockingAttack(attacker);
+    return true;
   }
 
   // ============================================================
@@ -208,7 +216,7 @@ class Character {
     const dirY = IN.direction.y;
 
     // Check block
-    this.isBlocking = IN.isBlocking() && this.grounded && this.state !== 'attack';
+    this._blocking = IN.isBlocking() && this.grounded && this.state !== 'attack';
 
     // Horizontal movement with EXPONENTIAL SMOOTHING for natural feel
     // accelFactor = 1 - exp(-1/accelFrames) — fast convergence, no overshoot

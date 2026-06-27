@@ -254,7 +254,7 @@ const InputSystem = {
 
   // Check if we're in a block state
   isBlocking() {
-    return this.isBuffered('BLOCK') || this.keys['shift'];
+    return this.keys['shift'] || this.keys['shiftleft'] || this.keys['shiftright'];
   }
 };
 
